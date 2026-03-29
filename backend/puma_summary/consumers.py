@@ -1,0 +1,194 @@
+import json
+import logging
+
+from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.contrib.auth.models import AnonymousUser
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  BATCH PROGRESS CONSUMER
+#  ws://host/ws/batches/<pk>/progress/
+#
+#  Auth: JWT passed as ?token=<access_token> in the query string.
+#        The JWTAuthMiddleware (see middleware.py) resolves the user before
+#        the consumer is instantiated — scope["user"] is already populated.
+#
+#  Channel group: "batch_<pk>"
+#        The Celery task sends to this group via the channel layer.
+#        All connected clients (e.g. multiple browser tabs) receive the same
+#        events automatically.
+#
+#  Message flow:
+#        Celery task  →  channel layer group  →  consumer  →  React client
+#
+#  Event shapes (JSON):
+#    progress : { event, batch_id, status, stage, progress_percent,
+#                 processed, total, failed, success_rate }
+#    complete : { event, batch_id, status, progress_percent,
+#                 processed, total, failed, success_rate,
+#                 report_count, failed_details, excel_available }
+#    error    : { event, batch_id, status, error_message }
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class BatchProgressConsumer(AsyncWebsocketConsumer):
+
+    # ── lifecycle ──────────────────────────────────────────────────────────
+
+    async def connect(self):
+        user = self.scope.get("user")
+
+        # Reject unauthenticated connections immediately
+        if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
+            logger.warning("WS rejected — unauthenticated connection attempt.")
+            await self.close(code=4401)
+            return
+
+        self.batch_pk   = self.scope["url_route"]["kwargs"]["pk"]
+        self.group_name = f"batch_{self.batch_pk}"
+
+        # Verify the batch exists and the user may see it
+        exists = await self._batch_exists(self.batch_pk)
+        if not exists:
+            logger.warning(
+                "WS rejected — batch #%s not found | user: %s",
+                self.batch_pk, user.username,
+            )
+            await self.close(code=4404)
+            return
+
+        # Join the channel layer group
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+        logger.info(
+            "WS connected | batch #%s | user: %s | channel: %s",
+            self.batch_pk, user.username, self.channel_name,
+        )
+
+        # Send the current batch snapshot immediately on connect so the
+        # React client can render the correct initial state without waiting
+        # for the next Celery push.
+        snapshot = await self._get_batch_snapshot(self.batch_pk)
+        if snapshot:
+            await self.send(text_data=json.dumps(snapshot))
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            logger.info(
+                "WS disconnected | batch #%s | code: %s",
+                self.batch_pk, close_code,
+            )
+
+    # The consumer is receive-only from the server side.
+    # React never needs to send messages — it only listens.
+    async def receive(self, text_data=None, bytes_data=None):
+        pass
+
+    # ── channel layer handlers ─────────────────────────────────────────────
+    # These methods are called by the channel layer when the Celery task
+    # sends a message to the group. The method name MUST match the
+    # "type" key in the group_send() call, with dots replaced by underscores.
+
+    async def batch_progress(self, event):
+        """Handles type="batch.progress" — incremental update."""
+        await self.send(text_data=json.dumps({
+            "event":            "progress",
+            "batch_id":         event["batch_id"],
+            "status":           event["status"],
+            "stage":            event.get("stage", ""),
+            "progress_percent": event["progress_percent"],
+            "processed":        event["processed"],
+            "total":            event["total"],
+            "failed":           event["failed"],
+            "success_rate":     event["success_rate"],
+        }))
+
+    async def batch_complete(self, event):
+        """Handles type="batch.complete" — final summary."""
+        await self.send(text_data=json.dumps({
+            "event":            "complete",
+            "batch_id":         event["batch_id"],
+            "status":           event["status"],
+            "progress_percent": 100,
+            "processed":        event["processed"],
+            "total":            event["total"],
+            "failed":           event["failed"],
+            "success_rate":     event["success_rate"],
+            "report_count":     event["report_count"],
+            "failed_details":   event.get("failed_details", []),
+            "excel_available":  event.get("excel_available", False),
+        }))
+
+    async def batch_error(self, event):
+        """Handles type="batch.error" — task crash."""
+        await self.send(text_data=json.dumps({
+            "event":         "error",
+            "batch_id":      event["batch_id"],
+            "status":        "FAILED",
+            "error_message": event.get("error_message", "Unknown error"),
+        }))
+
+    # ── DB helpers (sync → async) ──────────────────────────────────────────
+
+    @database_sync_to_async
+    def _batch_exists(self, pk):
+        from puma_summary.models import InspectionBatch
+        return InspectionBatch.objects.filter(pk=pk).exists()
+
+    @database_sync_to_async
+    def _get_batch_snapshot(self, pk):
+        """
+        Returns a progress/complete payload reflecting the current DB state.
+        Called once on connect so React gets an immediate render.
+        """
+        from puma_summary.models import InspectionBatch
+        from puma_summary.serializers import BatchFailedPDFSerializer
+        from django.conf import settings
+
+        try:
+            batch = (
+                InspectionBatch.objects
+                .prefetch_related("failed_pdfs")
+                .get(pk=pk)
+            )
+        except InspectionBatch.DoesNotExist:
+            return None
+
+        done = batch.status in (
+            InspectionBatch.Status.COMPLETED,
+            InspectionBatch.Status.PARTIAL,
+            InspectionBatch.Status.FAILED,
+        )
+
+        base = {
+            "batch_id":         batch.pk,
+            "status":           batch.status,
+            "progress_percent": batch.progress_percent,
+            "processed":        batch.processed_pdfs,
+            "total":            batch.total_pdfs,
+            "failed":           batch.failed_pdfs.count(),
+            "success_rate":     batch.success_rate,
+        }
+
+        if done:
+            excel_available = False
+            if batch.excel_report_path:
+                full = settings.BASE_DIR / "media" / batch.excel_report_path
+                excel_available = full.exists()
+
+            return {
+                **base,
+                "event":          "complete",
+                "report_count":   batch.reports.count(),
+                "failed_details": BatchFailedPDFSerializer(
+                    batch.failed_pdfs.all(), many=True
+                ).data,
+                "excel_available": excel_available,
+            }
+
+        return {**base, "event": "progress", "stage": ""}
