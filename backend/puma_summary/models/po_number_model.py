@@ -1,7 +1,8 @@
 from django.db import models
 from .inspection_report_model import InspectionReport
+from shared.models import BaseModel
 
-class PONumber(models.Model):
+class PONumber(BaseModel):
     """
     Individual PO number belonging to one InspectionReport.
     Stored as a proper child row so POs are independently searchable/filterable.

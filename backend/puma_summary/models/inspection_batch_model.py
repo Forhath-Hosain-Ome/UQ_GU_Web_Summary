@@ -1,7 +1,8 @@
 from django.db import models
+from shared.models import BaseModel
 
 
-class InspectionBatch(models.Model):
+class InspectionBatch(BaseModel):
     """
     One per upload session.
     Tracks the Celery job and aggregated counters.
@@ -19,8 +20,8 @@ class InspectionBatch(models.Model):
     celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
     status         = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
 
-    # Where the PDFs were on disk (used by the task; not stored persistently)
-    source_folder  = models.CharField(max_length=512)
+    # Where the PDFs were on disk (used by retry task; not stored persistently for new uploads)
+    source_folder  = models.CharField(max_length=512, blank=True)
 
     # Counters — filled in progressively by the Celery task
     total_pdfs     = models.PositiveIntegerField(default=0)
@@ -30,11 +31,15 @@ class InspectionBatch(models.Model):
     # Derived from the first successfully processed PDF
     factory_code   = models.CharField(max_length=20, blank=True)
 
-    # Error log for failed PDFs (filenames + reasons)
+    # Raw error dump (kept for debugging alongside structured BatchFailedPDF rows)
     error_log      = models.TextField(blank=True)
 
-    created_at     = models.DateTimeField(auto_now_add=True)
-    updated_at     = models.DateTimeField(auto_now=True)
+    # Relative path to the generated Excel file under media/
+    # Plain CharField — Django does NOT manage this file's lifecycle
+    excel_report_path = models.CharField(max_length=512, blank=True)
+
+    # How many times this batch (or its failed PDFs) have been retried
+    retry_count    = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-created_at"]
@@ -52,7 +57,7 @@ class InspectionBatch(models.Model):
 
     @property
     def progress_percent(self):
-        """Percentage complete — consumed by the JS polling endpoint."""
+        """Percentage complete — consumed by the WebSocket consumer."""
         if self.status in (self.Status.COMPLETED, self.Status.PARTIAL):
             return 100
         if not self.total_pdfs:

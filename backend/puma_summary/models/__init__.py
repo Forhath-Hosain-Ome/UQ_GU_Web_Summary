@@ -2,3 +2,4 @@ from .certificate_log_model import CertificateLog
 from .inspection_batch_model import InspectionBatch
 from .inspection_report_model import InspectionReport
 from .po_number_model import PONumber
+from .batch_failed_pdf_model import BatchFailedPDF

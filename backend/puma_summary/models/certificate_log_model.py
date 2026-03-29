@@ -1,7 +1,8 @@
 from django.db import models
 from .inspection_report_model import InspectionReport
+from shared.models import BaseModel
 
-class CertificateLog(models.Model):
+class CertificateLog(BaseModel):
     """
     Audit log — records THAT a certificate was generated and downloaded,
     NOT the file itself.

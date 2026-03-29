@@ -1,15 +1,8 @@
 from django.db import models
 from .inspection_batch_model import InspectionBatch
+from shared.models import BaseModel
 
-class InspectionReport(models.Model):
-    """
-    One row per successfully extracted PDF.
-    These are the ONLY things saved to the database —
-    no PDF bytes, no Excel bytes, no certificate bytes.
-
-    Fields map 1-to-1 with extract_single_pdf() output.
-    """
-
+class InspectionReport(BaseModel):
     batch = models.ForeignKey(
         InspectionBatch, on_delete=models.CASCADE, related_name="reports"
     )
@@ -31,7 +24,6 @@ class InspectionReport(models.Model):
     factory_name    = models.CharField(max_length=255, blank=True)
     final_customer  = models.CharField(max_length=100, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-inspection_date", "style"]
