@@ -153,7 +153,7 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
         try:
             batch = (
                 InspectionBatch.objects
-                .prefetch_related("failed_pdfs")
+                .prefetch_related("batch_failed_pdfs")
                 .get(pk=pk)
             )
         except InspectionBatch.DoesNotExist:
