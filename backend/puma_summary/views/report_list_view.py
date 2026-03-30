@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime
+from pathlib import Path
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from puma_summary.models import InspectionReport
@@ -36,9 +38,17 @@ class ReportListView(generics.ListAPIView):
         if p.get("po"):
             qs = qs.filter(po_numbers__number__icontains=p["po"])
         if p.get("date_from"):
-            qs = qs.filter(inspection_date__gte=p["date_from"])
+            try:
+                datetime.strptime(p["date_from"], "%Y-%m-%d")
+                qs = qs.filter(inspection_date__gte=p["date_from"])
+            except ValueError:
+                logger.warning("Invalid date_from format: %s", p["date_from"])
         if p.get("date_to"):
-            qs = qs.filter(inspection_date__lte=p["date_to"])
+            try:
+                datetime.strptime(p["date_to"], "%Y-%m-%d")
+                qs = qs.filter(inspection_date__lte=p["date_to"])
+            except ValueError:
+                logger.warning("Invalid date_to format: %s", p["date_to"])
         if p.get("batch"):
             qs = qs.filter(batch_id=p["batch"])
 

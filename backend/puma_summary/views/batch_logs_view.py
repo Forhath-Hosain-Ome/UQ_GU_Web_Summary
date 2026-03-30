@@ -25,7 +25,7 @@ class BatchLogsView(APIView):
         except InspectionBatch.DoesNotExist:
             return Response({"detail": "Batch not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        failed_pdfs = batch.failed_pdfs.all()
+        failed_pdfs = batch.batch_failed_pdfs.all()
         return Response(
             {
                 "batch_id":    batch.pk,

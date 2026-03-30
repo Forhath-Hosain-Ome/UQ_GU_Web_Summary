@@ -74,6 +74,14 @@ class CertificateDownloadView(APIView):
             filename, pk, request.user.username,
         )
 
+        # Validate file size to prevent memory issues
+        if len(cert_bytes) > 10 * 1024 * 1024:  # 10MB limit
+            logger.warning("Certificate file too large: %s bytes", len(cert_bytes))
+            return Response(
+                {"detail": "Generated certificate is too large."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
         response = FileResponse(
             iter([cert_bytes]),
             as_attachment=True,

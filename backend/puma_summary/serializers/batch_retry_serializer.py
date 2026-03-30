@@ -22,7 +22,7 @@ class BatchRetrySerializer(serializers.Serializer):
                 "Batch is currently processing — wait for it to finish before retrying."
             )
 
-        unretried = batch.failed_pdfs.filter(retried=False)
+        unretried = batch.batch_failed_pdfs.filter(retried=False)
         if not unretried.exists():
             raise serializers.ValidationError(
                 "No unretried failed PDFs found for this batch."

@@ -59,8 +59,22 @@ class BatchUploadView(APIView):
         batch_folder = upload_root / str(batch.pk)
         batch_folder.mkdir(parents=True, exist_ok=True)
  
+        # Track filenames to handle duplicates
+        filename_counts = {}
         for f in files:
-            dest = batch_folder / f.name
+            # Handle duplicate filenames by appending a counter
+            base_name = f.name
+            if base_name in filename_counts:
+                filename_counts[base_name] += 1
+                name_parts = base_name.rsplit('.', 1)
+                if len(name_parts) == 2:
+                    dest = batch_folder / f"{name_parts[0]}_{filename_counts[base_name]}.{name_parts[1]}"
+                else:
+                    dest = batch_folder / f"{base_name}_{filename_counts[base_name]}"
+            else:
+                filename_counts[base_name] = 0
+                dest = batch_folder / base_name
+            
             with open(dest, "wb") as out:
                 for chunk in f.chunks():
                     out.write(chunk)

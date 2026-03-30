@@ -1,4 +1,6 @@
 import logging
+import os
+from pathlib import Path
 from django.conf import settings
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
@@ -16,8 +18,14 @@ logger = logging.getLogger(__name__)
 def _excel_exists(batch: InspectionBatch) -> bool:
     if not batch.excel_report_path:
         return False
-    full = settings.BASE_DIR / "media" / batch.excel_report_path
-    return full.exists()
+    # Normalize path to prevent path traversal
+    full = os.path.normpath(settings.BASE_DIR / "media" / batch.excel_report_path)
+    media_root = os.path.normpath(str(settings.BASE_DIR / "media"))
+    # Ensure the path is within MEDIA_ROOT
+    if not full.startswith(media_root):
+        logger.warning("Path traversal attempt detected: %s", batch.excel_report_path)
+        return False
+    return os.path.exists(full)
 
 
 

@@ -11,6 +11,8 @@ from puma_summary.models import (
     PONumber,
 )
 from services.builder import write_excel
+from services.file_manager.copy_and_rename import copy_and_rename
+from services.certificate import generate_all_certificates
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ def _push_complete(batch: InspectionBatch):
         full = settings.BASE_DIR / "media" / batch.excel_report_path
         excel_available = full.exists()
 
-    failed_qs      = batch.failed_pdfs.all()
+    failed_qs      = batch.batch_failed_pdfs.all()
     failed_details = BatchFailedPDFSerializer(failed_qs, many=True).data
 
     _push(_group_name(batch.pk), {
@@ -236,7 +238,44 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         _push_progress(batch, STAGE_EXCEL, failed_count=len(failures))
         _build_excel(batch, records, factory_code)
 
-        # ── 4. FINALISE ───────────────────────────────────────────────────
+        # ── 4. RENAME PDFs ────────────────────────────────────────────────
+        puma = settings.PUMA_SETTINGS
+        renamed_pdf_dir = puma["RENAMED_PDF_DIR"] / str(batch.pk)
+        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
+
+        for record in records:
+            try:
+                source_path = Path(batch.source_folder) / record["pdf_filename"]
+                if source_path.exists():
+                    copy_and_rename(source_path, record, renamed_pdf_dir)
+            except Exception as exc:
+                logger.warning("Failed to rename PDF %s: %s", record["pdf_filename"], exc)
+
+        # ── 5. GENERATE CERTIFICATES ──────────────────────────────────────
+        certificate_dir = puma["CERTIFICATE_DIR"] / str(batch.pk)
+        certificate_dir.mkdir(parents=True, exist_ok=True)
+
+        template_path = puma["CERTIFICATE_TEMPLATE_PATH"]
+        if template_path.exists():
+            cert_records = [
+                {
+                    "style": r["style"],
+                    "inspection_date": r["inspection_date"],
+                    "po_qty": r["po_qty"],
+                    "actual_qty": r["actual_qty"],
+                    "inspected_qty": r["inspected_qty"],
+                    "factory_name": r["factory_name"],
+                    "factory_code": r["factory_code"],
+                    "final_customer": r["final_customer"],
+                    "po_numbers": r["po_numbers"],
+                }
+                for r in records
+            ]
+            generate_all_certificates(cert_records, template_path, certificate_dir)
+        else:
+            logger.warning("Certificate template not found at %s", template_path)
+
+        # ── 6. FINALISE ───────────────────────────────────────────────────
         batch.status = (
             InspectionBatch.Status.PARTIAL
             if failures
@@ -261,7 +300,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         # Mark failed + push error event before retrying
         try:
             batch.status    = InspectionBatch.Status.FAILED
-            batch.error_log += f"\n[TASK CRASH] {exc}"
+            batch.error_log = (batch.error_log or "") + f"\n[TASK CRASH] {exc}"
             batch.save(update_fields=["status", "error_log"])
             _push_error(batch, str(exc))
         except Exception:
@@ -335,7 +374,7 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
             r["pdf_filename"] for r in records
         }
 
-        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
+        _push_progress(batch, STAGE_SAVING, failed_count=len(new_failures))
 
         # ── 2. SAVE NEW REPORTS ───────────────────────────────────────────
         report_objs = [
@@ -370,17 +409,17 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
 
         # ── 3. UPDATE COUNTERS ────────────────────────────────────────────
         batch.processed_pdfs += len(created)
-        batch.failed_pdfs.filter(filename__in=recovered_names).update(retried=True)
+        batch.batch_failed_pdfs.filter(filename__in=recovered_names).update(retried=True)
 
         # Persist new structured failure rows for files that still fail
         _save_failed_pdfs(batch, new_failures)
 
         batch.save(update_fields=["processed_pdfs"])
-        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
+        _push_progress(batch, STAGE_SAVING, failed_count=len(new_failures))
 
         # ── 4. REBUILD EXCEL ──────────────────────────────────────────────
         # Collect ALL records for this batch (original + newly recovered)
-        _push_progress(batch, STAGE_EXCEL, failed_count=len(failures))
+        _push_progress(batch, STAGE_EXCEL, failed_count=len(new_failures))
 
         all_reports = batch.reports.prefetch_related("po_numbers").all()
         all_records = [
@@ -410,8 +449,45 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
         )
         _build_excel(batch, all_records, factory_code)
 
-        # ── 5. FINALISE ───────────────────────────────────────────────────
-        still_unretried = batch.failed_pdfs.filter(retried=False).exists()
+        # ── 5. RENAME PDFs ────────────────────────────────────────────────
+        puma = settings.PUMA_SETTINGS
+        renamed_pdf_dir = puma["RENAMED_PDF_DIR"] / str(batch.pk)
+        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
+
+        for record in all_records:
+            try:
+                source_path = Path(batch.source_folder) / record["pdf_filename"]
+                if source_path.exists():
+                    copy_and_rename(source_path, record, renamed_pdf_dir)
+            except Exception as exc:
+                logger.warning("Failed to rename PDF %s: %s", record["pdf_filename"], exc)
+
+        # ── 6. GENERATE CERTIFICATES ──────────────────────────────────────
+        certificate_dir = puma["CERTIFICATE_DIR"] / str(batch.pk)
+        certificate_dir.mkdir(parents=True, exist_ok=True)
+
+        template_path = puma["CERTIFICATE_TEMPLATE_PATH"]
+        if template_path.exists():
+            cert_records = [
+                {
+                    "style": r["style"],
+                    "inspection_date": r["inspection_date"],
+                    "po_qty": r["po_qty"],
+                    "actual_qty": r["actual_qty"],
+                    "inspected_qty": r["inspected_qty"],
+                    "factory_name": r["factory_name"],
+                    "factory_code": r["factory_code"],
+                    "final_customer": r["final_customer"],
+                    "po_numbers": r["po_numbers"],
+                }
+                for r in all_records
+            ]
+            generate_all_certificates(cert_records, template_path, certificate_dir)
+        else:
+            logger.warning("Certificate template not found at %s", template_path)
+
+        # ── 7. FINALISE ───────────────────────────────────────────────────
+        still_unretried = batch.batch_failed_pdfs.filter(retried=False).exists()
         batch.status = (
             InspectionBatch.Status.PARTIAL
             if still_unretried or missing

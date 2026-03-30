@@ -14,7 +14,8 @@ class InspectionBatchSerializer(serializers.ModelSerializer):
     Used for the batch detail/status endpoint.
     """
     reports          = InspectionReportListSerializer(many=True, read_only=True)
-    failed_pdfs      = BatchFailedPDFSerializer(many=True, read_only=True)
+    failed_pdf_records = BatchFailedPDFSerializer(many=True, read_only=True, source='batch_failed_pdfs')
+    failed_pdfs_count = serializers.IntegerField(source='failed_pdfs', read_only=True)
     success_rate     = serializers.FloatField(read_only=True)
     progress_percent = serializers.IntegerField(read_only=True)
 
@@ -26,7 +27,8 @@ class InspectionBatchSerializer(serializers.ModelSerializer):
             "factory_code",
             "total_pdfs",
             "processed_pdfs",
-            "failed_pdfs",
+            "failed_pdf_records",
+            "failed_pdfs_count",
             "success_rate",
             "progress_percent",
             "error_log",
@@ -72,4 +74,4 @@ class InspectionBatchListSerializer(serializers.ModelSerializer):
         return obj.reports.count()
 
     def get_failed_pdf_count(self, obj):
-        return obj.failed_pdfs.count()
+        return obj.batch_failed_pdfs.count()
