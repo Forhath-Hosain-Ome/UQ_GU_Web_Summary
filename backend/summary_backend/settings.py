@@ -61,6 +61,9 @@ REST_FRAMEWORK = {
     # Individual views can override with AllowAny if needed.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        
+        "rest_framework.authentication.SessionAuthentication",  
+        "rest_framework.authentication.BasicAuthentication",    
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -243,6 +246,7 @@ PUMA_SETTINGS = {
 
 # Celery Setup
 
-CELERY_BROKER_URL = 'redis://redis:6379/0'
+# CELERY_BROKER_URL = 'redis://redis:6379/0'
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
