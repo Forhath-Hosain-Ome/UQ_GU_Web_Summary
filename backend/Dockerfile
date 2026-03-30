@@ -14,6 +14,7 @@ COPY --from=builder /install /usr/local
 
 COPY . .
 
-EXPOSE 8080
+EXPOSE 8000
 
-CMD ["gunicorn", "summary_backend.wsgi:application", "--bind", "0.0.0.0:8080"]
+# Default to development server, can be overridden in docker-compose
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
