@@ -34,7 +34,7 @@ class BatchDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return (
             InspectionBatch.objects
-            .prefetch_related("reports__po_numbers", "failed_pdfs")
+            .prefetch_related("reports__po_numbers", "batch_failed_pdfs")
         )
 
     def retrieve(self, request, *args, **kwargs):

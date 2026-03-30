@@ -65,7 +65,7 @@ class BatchRetryView(APIView):
     @staticmethod
     def _get_batch(pk):
         try:
-            return InspectionBatch.objects.prefetch_related("failed_pdfs").get(pk=pk)
+            return InspectionBatch.objects.prefetch_related("batch_failed_pdfs").get(pk=pk)
         except InspectionBatch.DoesNotExist:
             return Response(
                 {"detail": "Batch not found."},

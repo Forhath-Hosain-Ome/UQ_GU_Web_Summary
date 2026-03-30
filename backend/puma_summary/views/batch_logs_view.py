@@ -21,7 +21,7 @@ class BatchLogsView(APIView):
 
     def get(self, request, pk):
         try:
-            batch = InspectionBatch.objects.prefetch_related("failed_pdfs").get(pk=pk)
+            batch = InspectionBatch.objects.prefetch_related("batch_failed_pdfs").get(pk=pk)
         except InspectionBatch.DoesNotExist:
             return Response({"detail": "Batch not found."}, status=status.HTTP_404_NOT_FOUND)
 

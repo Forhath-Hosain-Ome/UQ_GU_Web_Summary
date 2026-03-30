@@ -27,7 +27,7 @@ class BatchListView(generics.ListAPIView):
     def get_queryset(self):
         qs = (
             InspectionBatch.objects
-            .prefetch_related("reports", "failed_pdfs")
+            .prefetch_related("reports", "batch_failed_pdfs")
         )
         factory = self.request.query_params.get("factory", "").strip()
         if factory:
