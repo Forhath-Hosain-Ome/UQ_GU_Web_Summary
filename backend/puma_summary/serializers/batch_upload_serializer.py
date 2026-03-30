@@ -7,8 +7,15 @@ from rest_framework import serializers
 
 class BatchUploadSerializer(serializers.Serializer):
     """
-    Accepts one or more PDF files from a multipart/form-data POST.
-    Validated files are passed to the view for saving + Celery dispatch.
+    Validates files pulled from request.FILES.getlist("files").
+    DRF ListField(child=FileField) cannot traverse Django's MultiValueDict
+    from multipart requests, so the view passes the list explicitly.
+ 
+    Usage in view:
+        files = request.FILES.getlist("files")
+        s = BatchUploadSerializer(data={"files": files})
+        s.is_valid(raise_exception=True)
+        files = s.validated_data["files"]
     """
     files = serializers.ListField(
         child=serializers.FileField(
@@ -19,15 +26,14 @@ class BatchUploadSerializer(serializers.Serializer):
         allow_empty=False,
         error_messages={"empty": "At least one PDF file is required."},
     )
-
+ 
     def validate_files(self, files):
         errors = []
         for f in files:
             if not f.name.lower().endswith(".pdf"):
                 errors.append(f"{f.name}: only PDF files are accepted.")
-            # 50 MB per file guard
             if f.size > 50 * 1024 * 1024:
-                errors.append(f"{f.name}: file exceeds the 50 MB limit.")
+                errors.append(f"{f.name}: exceeds the 50 MB limit.")
         if errors:
             raise serializers.ValidationError(errors)
         return files
