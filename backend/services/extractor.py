@@ -123,10 +123,10 @@ def extract_single_pdf(pdf_path: Path) -> dict:
     }
 
 
-def extract_folder(folder: Path) -> tuple[list[dict], list[str]]:
+def extract_folder(folder: Path) -> tuple[list[dict], list[tuple[str, str]]]:
     """
     Extract data from all PDFs in folder.
-    Returns (successful_records, failed_filenames).
+    Returns (successful_records, failed_filenames_with_reasons).
     """
     records, failures = [], []
 
@@ -138,6 +138,26 @@ def extract_folder(folder: Path) -> tuple[list[dict], list[str]]:
                         pdf_file.name, record["style"], ",".join(record["po_numbers"]))
         except (ExtractionError, InvalidPDFError) as exc:
             logger.error("FAILED | %s | %s", pdf_file.name, exc)
-            failures.append(pdf_file.name)
+            failures.append((pdf_file.name, str(exc)))
+
+    return records, failures
+
+
+def extract_files(pdf_paths: list[Path]) -> tuple[list[dict], list[tuple[str, str]]]:
+    """
+    Extract data from a specific list of PDF files.
+    Returns (successful_records, failed_filenames_with_reasons).
+    """
+    records, failures = [], []
+
+    for pdf_file in pdf_paths:
+        try:
+            record = extract_single_pdf(pdf_file)
+            records.append(record)
+            logger.info("OK | %s | Style=%s | POs=%s",
+                        pdf_file.name, record["style"], ",".join(record["po_numbers"]))
+        except (ExtractionError, InvalidPDFError) as exc:
+            logger.error("FAILED | %s | %s", pdf_file.name, exc)
+            failures.append((pdf_file.name, str(exc)))
 
     return records, failures
