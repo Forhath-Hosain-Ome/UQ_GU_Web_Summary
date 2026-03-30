@@ -36,7 +36,7 @@ def _group_name(batch_id: int) -> str:
     return f"batch_{batch_id}"
 
 
-async def _push(group: str, message: dict):
+def _push(group: str, message: dict):
     """Fire-and-forget push to the channel layer group."""
     from asgiref.sync import async_to_sync
     layer = _get_channel_layer()
