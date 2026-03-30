@@ -10,7 +10,6 @@ from puma_summary.models import (
     InspectionReport,
     PONumber,
 )
-from services.extractor import extract_folder, extract_files
 from services.builder import write_excel
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ async def _push(group: str, message: dict):
     async_to_sync(layer.group_send)(group, message)
 
 
-def _push_progress(batch: InspectionBatch, stage: str = ""):
+def _push_progress(batch: InspectionBatch, stage: str = "", failed_count: int = 0):
     """Push an incremental progress event to all connected WS clients."""
     _push(_group_name(batch.pk), {
         "type":             "batch.progress",   # → consumer.batch_progress()
@@ -52,7 +51,7 @@ def _push_progress(batch: InspectionBatch, stage: str = ""):
         "progress_percent": batch.progress_percent,
         "processed":        batch.processed_pdfs,
         "total":            batch.total_pdfs,
-        "failed":           batch.failed_pdfs.count(),
+        "failed":           failed_count,
         "success_rate":     batch.success_rate,
     })
 
@@ -153,6 +152,7 @@ def _build_excel(batch: InspectionBatch, records: list[dict], factory_code: str)
     name="puma_summary.process_inspection_batch",
 )
 def process_inspection_batch(self, batch_id: int) -> dict:
+    from services.extractor import extract_folder, extract_files
     """
     Full pipeline for one InspectionBatch:
       1. Extract data from every PDF in source_folder
@@ -181,7 +181,6 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         records, failures = extract_folder(folder)
 
         batch.total_pdfs  = len(records) + len(failures)
-        batch.failed_pdfs_count = len(failures)   # counter field
         batch.save(update_fields=["total_pdfs"])
 
         _save_failed_pdfs(batch, failures)
@@ -192,7 +191,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
             )
 
         # ── 2. SAVE TO DB ─────────────────────────────────────────────────
-        _push_progress(batch, STAGE_SAVING)
+        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
 
         factory_code       = records[0].get("factory_code", "")
         batch.factory_code = factory_code
@@ -222,7 +221,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         batch.processed_pdfs = len(created)
         batch.save(update_fields=["processed_pdfs"])
 
-        _push_progress(batch, STAGE_SAVING)
+        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
 
         PONumber.objects.bulk_create(
             [
@@ -234,7 +233,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         )
 
         # ── 3. BUILD EXCEL ────────────────────────────────────────────────
-        _push_progress(batch, STAGE_EXCEL)
+        _push_progress(batch, STAGE_EXCEL, failed_count=len(failures))
         _build_excel(batch, records, factory_code)
 
         # ── 4. FINALISE ───────────────────────────────────────────────────
@@ -301,7 +300,7 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
     try:
         batch = (
             InspectionBatch.objects
-            .prefetch_related("failed_pdfs", "reports")
+            .prefetch_related("batch_failed_pdfs", "reports")
             .get(pk=batch_id)
         )
     except InspectionBatch.DoesNotExist:
@@ -336,7 +335,7 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
             r["pdf_filename"] for r in records
         }
 
-        _push_progress(batch, STAGE_SAVING)
+        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
 
         # ── 2. SAVE NEW REPORTS ───────────────────────────────────────────
         report_objs = [
@@ -377,11 +376,11 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
         _save_failed_pdfs(batch, new_failures)
 
         batch.save(update_fields=["processed_pdfs"])
-        _push_progress(batch, STAGE_SAVING)
+        _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
 
         # ── 4. REBUILD EXCEL ──────────────────────────────────────────────
         # Collect ALL records for this batch (original + newly recovered)
-        _push_progress(batch, STAGE_EXCEL)
+        _push_progress(batch, STAGE_EXCEL, failed_count=len(failures))
 
         all_reports = batch.reports.prefetch_related("po_numbers").all()
         all_records = [

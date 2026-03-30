@@ -1,1 +1,1 @@
-from .process_inspection_batch import process_inspection_batch
+from .process_inspection_batch import process_inspection_batch, retry_failed_pdfs
