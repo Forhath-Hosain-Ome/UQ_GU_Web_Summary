@@ -1,10 +1,7 @@
 import logging
 import re
-import shutil
-from pathlib import Path
 
 from utils.constants import REGEX_TRAILING_COUNTER
-from shared.exceptions import FileProcessingError
 
 logger = logging.getLogger(__name__)
 
