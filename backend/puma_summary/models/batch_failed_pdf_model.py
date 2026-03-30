@@ -13,7 +13,7 @@ class BatchFailedPDF(BaseModel):
     batch = models.ForeignKey(
         InspectionBatch,
         on_delete=models.CASCADE,
-        related_name="failed_pdfs",
+        related_name="batch_failed_pdfs",
     )
     filename = models.CharField(max_length=512)
     reason   = models.TextField(blank=True)
