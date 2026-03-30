@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -111,7 +112,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
             # Optional tuning
             "capacity":  1500,   # max messages queued per channel
             "expiry":    60,     # seconds before unread messages are dropped
@@ -126,6 +127,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",   # Vite default
     "http://localhost:3000",   # CRA default
 ]
+
+# Allow credentials (cookies, authorization headers) for cross-origin requests
+CORS_ALLOW_CREDENTIALS = True
 
 # Allow the Authorization header so Bearer tokens work cross-origin
 CORS_ALLOW_HEADERS = [
@@ -246,7 +250,7 @@ PUMA_SETTINGS = {
 
 # Celery Setup
 
-# CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
