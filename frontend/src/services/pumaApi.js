@@ -17,8 +17,16 @@ export const uploadBatch = (files) => {
   return api.post("/batches/upload/", fd).then((r) => r.data);
 };
 
-export const retryBatch = (pk) =>
-  api.post(`/batches/${pk}/retry/`).then((r) => r.data);
+/**
+ * Retry failed PDFs for a batch.
+ * @param {number} pk - Batch ID
+ * @param {string[]} [filenames] - Optional list of specific filenames to retry.
+ *   Omit (or pass []) to retry ALL unretried failures.
+ */
+export const retryBatch = (pk, filenames = []) =>
+  api
+    .post(`/batches/${pk}/retry/`, filenames.length ? { filenames } : {})
+    .then((r) => r.data);
 
 export const fetchBatchLogs = (pk) =>
   api.get(`/batches/${pk}/logs/`).then((r) => r.data);
