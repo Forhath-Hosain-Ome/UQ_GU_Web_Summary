@@ -1,5 +1,4 @@
 import logging
-from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -11,12 +10,17 @@ from puma_summary.tasks import retry_failed_pdfs
 logger = logging.getLogger(__name__)
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-#  4. BATCH RETRY
-#     POST /api/batches/<pk>/retry/
-#     Re-runs only the failed PDFs (retried=False) from the original batch.
-#     Creates a sibling Celery task — does NOT create a new batch row.
+#  BATCH RETRY
+#  POST /api/batches/<pk>/retry/
+#
+#  Body (JSON, optional):
+#      { "filenames": ["report_a.pdf", "report_b.pdf"] }
+#
+#  Omit `filenames` (or send []) to retry ALL unretried failures.
+#  Send a list to retry specific PDFs only.
+#
+#  Creates a sibling Celery task — does NOT create a new batch row.
 # ─────────────────────────────────────────────────────────────────────────────
 
 class BatchRetryView(APIView):
@@ -34,8 +38,8 @@ class BatchRetryView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        unretried_qs  = serializer.validated_data["unretried_qs"]
-        failed_names  = list(unretried_qs.values_list("filename", flat=True))
+        unretried_qs = serializer.validated_data["unretried_qs"]
+        failed_names = list(unretried_qs.values_list("filename", flat=True))
 
         # Reset batch status so the WS consumer resumes sending updates
         batch.status = InspectionBatch.Status.PENDING
@@ -48,16 +52,17 @@ class BatchRetryView(APIView):
 
         logger.info(
             "Retry #%s for Batch #%s | %d files | task %s | user: %s",
-            batch.retry_count, batch.pk, len(failed_names), task.id, request.user.username,
+            batch.retry_count, batch.pk, len(failed_names), task.id,
+            request.user.username,
         )
 
         return Response(
             {
-                "batch_id":      batch.pk,
-                "retry_count":   batch.retry_count,
+                "batch_id":       batch.pk,
+                "retry_count":    batch.retry_count,
                 "files_retrying": failed_names,
-                "task_id":       task.id,
-                "ws_channel":    f"batch_{batch.pk}",
+                "task_id":        task.id,
+                "ws_channel":     f"batch_{batch.pk}",
             },
             status=status.HTTP_202_ACCEPTED,
         )
