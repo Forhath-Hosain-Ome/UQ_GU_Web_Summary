@@ -1,5 +1,6 @@
 from django.db import models
 from shared.models import BaseModel
+from django.contrib.auth.models import User
 
 
 class InspectionBatch(BaseModel):
@@ -15,6 +16,14 @@ class InspectionBatch(BaseModel):
         COMPLETED  = "COMPLETED",  "Completed"
         PARTIAL    = "PARTIAL",    "Partial"   # some PDFs failed
         FAILED     = "FAILED",     "Failed"
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inspection_batches",
+    )
 
     # Celery tracking
     celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
@@ -47,7 +56,8 @@ class InspectionBatch(BaseModel):
         verbose_name_plural = "Inspection Batches"
 
     def __str__(self):
-        return f"Batch #{self.pk} | {self.factory_code or 'Unknown'} | {self.status}"
+        user = self.created_by.username if self.created_by_id else "unknown"
+        return f"Batch #{self.pk} | {self.factory_code or 'Unknown'} | {self.status} | by {user}"
 
     @property
     def success_rate(self):

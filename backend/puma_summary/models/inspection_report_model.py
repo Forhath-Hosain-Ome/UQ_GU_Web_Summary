@@ -1,6 +1,7 @@
 from django.db import models
 from .inspection_batch_model import InspectionBatch
 from shared.models import BaseModel
+from django.utils import timezone
 
 class InspectionReport(BaseModel):
     batch = models.ForeignKey(
@@ -9,6 +10,14 @@ class InspectionReport(BaseModel):
 
     # Which PDF this came from (name only — file is NOT stored)
     pdf_filename = models.CharField(max_length=512)
+
+    # ── Report metadata ───────────────────────────────────────────────────────
+    # Left blank at creation; filled in manually later
+    report_number = models.CharField(max_length=100, blank=True, db_index=True)
+ 
+    # Auto-set to the date the row is first created; never changes after that.
+    # This is the "report generation date", separate from inspection_date.
+    report_date = models.DateField(default=timezone.localdate, editable=False)
 
     # ── Extracted data ────────────────────────────────────────────────────────
     inspection_date = models.DateField(null=True, blank=True)
@@ -38,3 +47,8 @@ class InspectionReport(BaseModel):
         """e.g. '123456(4600000001,4600000002)' — used in Excel summary sheet."""
         pos = list(self.po_numbers.values_list("number", flat=True))
         return f"{self.style}({','.join(pos)})"
+    
+    @property
+    def created_by(self):
+        """Convenience accessor — delegates to the parent batch."""
+        return self.batch.created_by
