@@ -6,13 +6,14 @@ from django.conf import settings
 
 from puma_summary.models import (
     BatchFailedPDF,
+    CertificateLog,
     InspectionBatch,
     InspectionReport,
     PONumber,
 )
 from services.builder import write_excel
 from services.file_manager.copy_and_rename import copy_and_rename
-from services.certificate import generate_all_certificates
+from services.certificate import generate_certificate
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def _push(group: str, message: dict):
 def _push_progress(batch: InspectionBatch, stage: str = "", failed_count: int = 0):
     """Push an incremental progress event to all connected WS clients."""
     _push(_group_name(batch.pk), {
-        "type":             "batch.progress",   # → consumer.batch_progress()
+        "type":             "batch.progress",
         "batch_id":         batch.pk,
         "status":           batch.status,
         "stage":            stage,
@@ -59,10 +60,7 @@ def _push_progress(batch: InspectionBatch, stage: str = "", failed_count: int = 
 
 
 def _push_complete(batch: InspectionBatch):
-    """
-    Push the final summary event.
-    Includes structured failed_details and excel_available flag.
-    """
+    """Push the final summary event."""
     from puma_summary.serializers import BatchFailedPDFSerializer
 
     excel_available = False
@@ -74,24 +72,24 @@ def _push_complete(batch: InspectionBatch):
     failed_details = BatchFailedPDFSerializer(failed_qs, many=True).data
 
     _push(_group_name(batch.pk), {
-        "type":            "batch.complete",    # → consumer.batch_complete()
-        "batch_id":        batch.pk,
-        "status":          batch.status,
+        "type":             "batch.complete",
+        "batch_id":         batch.pk,
+        "status":           batch.status,
         "progress_percent": 100,
-        "processed":       batch.processed_pdfs,
-        "total":           batch.total_pdfs,
-        "failed":          failed_qs.count(),
-        "success_rate":    batch.success_rate,
-        "report_count":    batch.reports.count(),
-        "failed_details":  list(failed_details),
-        "excel_available": excel_available,
+        "processed":        batch.processed_pdfs,
+        "total":            batch.total_pdfs,
+        "failed":           batch.failed_pdfs,          # integer field
+        "success_rate":     batch.success_rate,
+        "report_count":     batch.reports.count(),
+        "failed_details":   list(failed_details),
+        "excel_available":  excel_available,
     })
 
 
 def _push_error(batch: InspectionBatch, message: str):
     """Push a task-crash error event."""
     _push(_group_name(batch.pk), {
-        "type":          "batch.error",         # → consumer.batch_error()
+        "type":          "batch.error",
         "batch_id":      batch.pk,
         "status":        InspectionBatch.Status.FAILED,
         "error_message": message,
@@ -114,10 +112,7 @@ def _save_failed_pdfs(batch: InspectionBatch, failures: list[tuple[str, str]]):
     )
 
     raw_lines = "\n".join(f"{fn}: {reason}" for fn, reason in failures)
-    if batch.error_log:
-        batch.error_log += f"\n{raw_lines}"
-    else:
-        batch.error_log = raw_lines
+    batch.error_log = (batch.error_log + f"\n{raw_lines}") if batch.error_log else raw_lines
     batch.save(update_fields=["error_log"])
 
 
@@ -140,6 +135,41 @@ def _build_excel(batch: InspectionBatch, records: list[dict], factory_code: str)
     return excel_path
 
 
+def _generate_cert_for_report(
+    report: InspectionReport,
+    template_path: Path,
+    cert_dir: Path,
+    username: str,
+) -> None:
+    """
+    Generate a DOCX certificate for a single InspectionReport and log the event.
+    Silently logs errors — a cert failure must never block the main pipeline.
+    """
+    record = {
+        "style":           report.style,
+        "inspection_date": str(report.inspection_date or ""),
+        "po_qty":          report.po_qty,
+        "actual_qty":      report.actual_qty,
+        "inspected_qty":   report.inspected_qty,
+        "factory_name":    report.factory_name,
+        "factory_code":    report.factory_code,
+        "final_customer":  report.final_customer,
+        "po_numbers":      list(report.po_numbers.values_list("number", flat=True)),
+    }
+    try:
+        generate_certificate(record, template_path, cert_dir)
+        CertificateLog.objects.create(
+            report=report,
+            generated_by=username,
+        )
+        logger.info("Certificate generated for report #%s (%s)", report.pk, report.style)
+    except Exception as exc:
+        logger.error(
+            "Certificate generation failed for report #%s (%s): %s",
+            report.pk, report.style, exc,
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  TASK 1 — PROCESS INSPECTION BATCH
 #  Called by BatchUploadView after saving uploaded PDFs to disk.
@@ -154,22 +184,28 @@ def _build_excel(batch: InspectionBatch, records: list[dict], factory_code: str)
     name="puma_summary.process_inspection_batch",
 )
 def process_inspection_batch(self, batch_id: int) -> dict:
-    from services.extractor import extract_folder, extract_files
+    from services.extractor import extract_folder
+
     """
     Full pipeline for one InspectionBatch:
       1. Extract data from every PDF in source_folder
-      2. Save extracted records + PO numbers to DB
-      3. Build Excel report to disk
-      4. Push WebSocket events throughout
+      2. Save each extracted report + PO numbers to DB
+      3. Generate a DOCX certificate per report immediately after saving
+      4. Rename each PDF in-place in source_folder
+      5. Build Excel report to disk
+      6. Push WebSocket events throughout
 
-    Nothing is stored as DB blobs — only text fields + paths.
-    Certificates are generated on-demand per report (see CertificateDownloadView).
+    report_date is auto-set by the model default (today's date) — no
+    manual assignment needed here.
     """
     try:
-        batch = InspectionBatch.objects.get(pk=batch_id)
+        batch = InspectionBatch.objects.select_related("created_by").get(pk=batch_id)
     except InspectionBatch.DoesNotExist:
         logger.error("Batch %s not found", batch_id)
         return {"error": "Batch not found"}
+
+    username = batch.created_by.username if batch.created_by_id else "system"
+    puma     = settings.PUMA_SETTINGS
 
     try:
         # ── 1. EXTRACT ────────────────────────────────────────────────────
@@ -177,12 +213,10 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         batch.save(update_fields=["status"])
         _push_progress(batch, STAGE_EXTRACTING)
 
-        folder          = Path(batch.source_folder)
-        # extract_folder returns (records, failures)
-        # failures: list of (filename, reason) tuples
+        folder            = Path(batch.source_folder)
         records, failures = extract_folder(folder)
 
-        batch.total_pdfs  = len(records) + len(failures)
+        batch.total_pdfs = len(records) + len(failures)
         batch.save(update_fields=["total_pdfs"])
 
         _save_failed_pdfs(batch, failures)
@@ -192,15 +226,25 @@ def process_inspection_batch(self, batch_id: int) -> dict:
                 "No records could be extracted — check PDF contents and logs."
             )
 
-        # ── 2. SAVE TO DB ─────────────────────────────────────────────────
+        # ── 2. SAVE TO DB + CERT PER PDF ──────────────────────────────────
         _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
 
         factory_code       = records[0].get("factory_code", "")
         batch.factory_code = factory_code
         batch.save(update_fields=["factory_code"])
 
-        report_objs = [
-            InspectionReport(
+        # Certificate output dir for this batch
+        cert_dir = puma.get("CERTIFICATE_DIR", settings.BASE_DIR / "media" / "certificates") / str(batch.pk)
+        cert_dir.mkdir(parents=True, exist_ok=True)
+        template_path = Path(puma["CERTIFICATE_TEMPLATE_PATH"])
+        certs_enabled = template_path.exists()
+        if not certs_enabled:
+            logger.warning("Certificate template not found at %s — skipping cert generation", template_path)
+
+        saved_reports = []
+        for r in records:
+            # report_date is set automatically by the model's default=timezone.localdate
+            report = InspectionReport.objects.create(
                 batch=batch,
                 pdf_filename=r["pdf_filename"],
                 inspection_date=r["inspection_date"] or None,
@@ -216,66 +260,36 @@ def process_inspection_batch(self, batch_id: int) -> dict:
                 factory_name=r["factory_name"],
                 final_customer=r["final_customer"],
             )
-            for r in records
-        ]
-        created = InspectionReport.objects.bulk_create(report_objs)
 
-        batch.processed_pdfs = len(created)
+            # Save PO numbers
+            PONumber.objects.bulk_create(
+                [PONumber(report=report, number=po) for po in r["po_numbers"]],
+                ignore_conflicts=True,
+            )
+
+            # Generate certificate immediately after this report is persisted
+            if certs_enabled:
+                _generate_cert_for_report(report, template_path, cert_dir, username)
+
+            saved_reports.append(report)
+
+            # Rename the source PDF in-place right after processing
+            source_path = folder / r["pdf_filename"]
+            if source_path.exists():
+                try:
+                    copy_and_rename(source_path, r, folder)
+                except Exception as exc:
+                    logger.warning("Failed to rename PDF %s: %s", r["pdf_filename"], exc)
+
+        batch.processed_pdfs = len(saved_reports)
         batch.save(update_fields=["processed_pdfs"])
-
         _push_progress(batch, STAGE_SAVING, failed_count=len(failures))
-
-        PONumber.objects.bulk_create(
-            [
-                PONumber(report=report, number=po)
-                for report, rec in zip(created, records)
-                for po in rec["po_numbers"]
-            ],
-            ignore_conflicts=True,
-        )
 
         # ── 3. BUILD EXCEL ────────────────────────────────────────────────
         _push_progress(batch, STAGE_EXCEL, failed_count=len(failures))
         _build_excel(batch, records, factory_code)
 
-        # ── 4. RENAME PDFs ────────────────────────────────────────────────
-        puma = settings.PUMA_SETTINGS
-        renamed_pdf_dir = puma["RENAMED_PDF_DIR"] / str(batch.pk)
-        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
-
-        for record in records:
-            try:
-                source_path = Path(batch.source_folder) / record["pdf_filename"]
-                if source_path.exists():
-                    copy_and_rename(source_path, record, renamed_pdf_dir)
-            except Exception as exc:
-                logger.warning("Failed to rename PDF %s: %s", record["pdf_filename"], exc)
-
-        # ── 5. GENERATE CERTIFICATES ──────────────────────────────────────
-        certificate_dir = puma["CERTIFICATE_DIR"] / str(batch.pk)
-        certificate_dir.mkdir(parents=True, exist_ok=True)
-
-        template_path = puma["CERTIFICATE_TEMPLATE_PATH"]
-        if template_path.exists():
-            cert_records = [
-                {
-                    "style": r["style"],
-                    "inspection_date": r["inspection_date"],
-                    "po_qty": r["po_qty"],
-                    "actual_qty": r["actual_qty"],
-                    "inspected_qty": r["inspected_qty"],
-                    "factory_name": r["factory_name"],
-                    "factory_code": r["factory_code"],
-                    "final_customer": r["final_customer"],
-                    "po_numbers": r["po_numbers"],
-                }
-                for r in records
-            ]
-            generate_all_certificates(cert_records, template_path, certificate_dir)
-        else:
-            logger.warning("Certificate template not found at %s", template_path)
-
-        # ── 6. FINALISE ───────────────────────────────────────────────────
+        # ── 4. FINALISE ───────────────────────────────────────────────────
         batch.status = (
             InspectionBatch.Status.PARTIAL
             if failures
@@ -287,24 +301,23 @@ def process_inspection_batch(self, batch_id: int) -> dict:
 
         logger.info(
             "Batch #%s done — %d saved, %d failed.",
-            batch_id, len(records), len(failures),
+            batch_id, len(saved_reports), len(failures),
         )
         return {
             "batch_id":  batch_id,
             "status":    batch.status,
-            "processed": len(records),
+            "processed": len(saved_reports),
             "failed":    len(failures),
         }
 
     except Exception as exc:
-        # Mark failed + push error event before retrying
         try:
             batch.status    = InspectionBatch.Status.FAILED
             batch.error_log = (batch.error_log or "") + f"\n[TASK CRASH] {exc}"
             batch.save(update_fields=["status", "error_log"])
             _push_error(batch, str(exc))
         except Exception:
-            pass  # don't mask the original exception
+            pass
 
         logger.exception("Batch #%s FAILED: %s", batch_id, exc)
         raise self.retry(exc=exc, countdown=60)
@@ -312,8 +325,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  TASK 2 — RETRY FAILED PDFS
-#  Called by BatchRetryView.
-#  Re-processes only the filenames passed in — does NOT touch successful rows.
+#  Called by BatchRetryView with a specific list of filenames.
 # ─────────────────────────────────────────────────────────────────────────────
 
 @shared_task(
@@ -330,15 +342,20 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
 
     Steps:
       1. Locate each file in batch.source_folder
-      2. Re-extract with extract_files()  (subset version of extract_folder)
+      2. Re-extract with extract_files()
       3. Save new InspectionReport + PONumber rows
-      4. Mark BatchFailedPDF rows as retried=True for successes
-      5. Rebuild the Excel report to include the newly recovered records
-      6. Push WebSocket events throughout
+      4. Generate certificate per recovered report
+      5. Rename recovered PDFs in-place
+      6. Mark BatchFailedPDF rows as retried=True for successes
+      7. Rebuild the Excel report to include all recovered records
+      8. Push WebSocket events throughout
     """
+    from services.extractor import extract_files
+
     try:
         batch = (
             InspectionBatch.objects
+            .select_related("created_by")
             .prefetch_related("batch_failed_pdfs", "reports")
             .get(pk=batch_id)
         )
@@ -346,14 +363,17 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
         logger.error("Retry — Batch #%s not found", batch_id)
         return {"error": "Batch not found"}
 
+    username = batch.created_by.username if batch.created_by_id else "system"
+    puma     = settings.PUMA_SETTINGS
+
     try:
         batch.status = InspectionBatch.Status.PROCESSING
         batch.save(update_fields=["status"])
         _push_progress(batch, STAGE_EXTRACTING)
 
-        folder     = Path(batch.source_folder)
-        pdf_paths  = [folder / fn for fn in filenames if (folder / fn).exists()]
-        missing    = [fn for fn in filenames if not (folder / fn).exists()]
+        folder    = Path(batch.source_folder)
+        pdf_paths = [folder / fn for fn in filenames if (folder / fn).exists()]
+        missing   = [fn for fn in filenames if not (folder / fn).exists()]
 
         if missing:
             logger.warning(
@@ -361,24 +381,21 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
                 batch_id, len(missing), missing,
             )
 
-        # ── 1. EXTRACT ONLY THE REQUESTED FILES ───────────────────────────
-        # extract_files() is a subset helper — same interface as extract_folder
-        # but accepts an explicit list of Path objects instead of a directory.
+        # ── 1. EXTRACT ────────────────────────────────────────────────────
         records, new_failures = extract_files(pdf_paths)
-
-        # Files that were on disk but still failed
-        new_failure_names = {fn for fn, _ in new_failures}
-
-        # Files that are now recovered
-        recovered_names = {
-            r["pdf_filename"] for r in records
-        }
+        recovered_names = {r["pdf_filename"] for r in records}
 
         _push_progress(batch, STAGE_SAVING, failed_count=len(new_failures))
 
-        # ── 2. SAVE NEW REPORTS ───────────────────────────────────────────
-        report_objs = [
-            InspectionReport(
+        # ── 2. SAVE + CERT PER RECOVERED PDF ─────────────────────────────
+        cert_dir = puma.get("CERTIFICATE_DIR", settings.BASE_DIR / "media" / "certificates") / str(batch.pk)
+        cert_dir.mkdir(parents=True, exist_ok=True)
+        template_path = Path(puma["CERTIFICATE_TEMPLATE_PATH"])
+        certs_enabled = template_path.exists()
+
+        saved_reports = []
+        for r in records:
+            report = InspectionReport.objects.create(
                 batch=batch,
                 pdf_filename=r["pdf_filename"],
                 inspection_date=r["inspection_date"] or None,
@@ -394,35 +411,37 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
                 factory_name=r["factory_name"],
                 final_customer=r["final_customer"],
             )
-            for r in records
-        ]
-        created = InspectionReport.objects.bulk_create(report_objs)
 
-        PONumber.objects.bulk_create(
-            [
-                PONumber(report=report, number=po)
-                for report, rec in zip(created, records)
-                for po in rec["po_numbers"]
-            ],
-            ignore_conflicts=True,
-        )
+            PONumber.objects.bulk_create(
+                [PONumber(report=report, number=po) for po in r["po_numbers"]],
+                ignore_conflicts=True,
+            )
 
-        # ── 3. UPDATE COUNTERS ────────────────────────────────────────────
-        batch.processed_pdfs += len(created)
+            if certs_enabled:
+                _generate_cert_for_report(report, template_path, cert_dir, username)
+
+            saved_reports.append(report)
+
+            # Rename this PDF in-place immediately
+            source_path = folder / r["pdf_filename"]
+            if source_path.exists():
+                try:
+                    copy_and_rename(source_path, r, folder)
+                except Exception as exc:
+                    logger.warning("Failed to rename PDF %s: %s", r["pdf_filename"], exc)
+
+        # ── 3. UPDATE COUNTERS + FAILURE RECORDS ─────────────────────────
+        batch.processed_pdfs += len(saved_reports)
         batch.batch_failed_pdfs.filter(filename__in=recovered_names).update(retried=True)
-
-        # Persist new structured failure rows for files that still fail
         _save_failed_pdfs(batch, new_failures)
-
         batch.save(update_fields=["processed_pdfs"])
         _push_progress(batch, STAGE_SAVING, failed_count=len(new_failures))
 
-        # ── 4. REBUILD EXCEL ──────────────────────────────────────────────
-        # Collect ALL records for this batch (original + newly recovered)
+        # ── 4. REBUILD EXCEL (all reports for this batch) ─────────────────
         _push_progress(batch, STAGE_EXCEL, failed_count=len(new_failures))
 
-        all_reports = batch.reports.prefetch_related("po_numbers").all()
-        all_records = [
+        all_reports  = batch.reports.prefetch_related("po_numbers").all()
+        all_records  = [
             {
                 "pdf_filename":    rpt.pdf_filename,
                 "inspection_date": str(rpt.inspection_date or ""),
@@ -437,9 +456,7 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
                 "factory_code":    rpt.factory_code,
                 "factory_name":    rpt.factory_name,
                 "final_customer":  rpt.final_customer,
-                "po_numbers":      list(
-                    rpt.po_numbers.values_list("number", flat=True)
-                ),
+                "po_numbers":      list(rpt.po_numbers.values_list("number", flat=True)),
             }
             for rpt in all_reports
         ]
@@ -449,44 +466,7 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
         )
         _build_excel(batch, all_records, factory_code)
 
-        # ── 5. RENAME PDFs ────────────────────────────────────────────────
-        puma = settings.PUMA_SETTINGS
-        renamed_pdf_dir = puma["RENAMED_PDF_DIR"] / str(batch.pk)
-        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
-
-        for record in all_records:
-            try:
-                source_path = Path(batch.source_folder) / record["pdf_filename"]
-                if source_path.exists():
-                    copy_and_rename(source_path, record, renamed_pdf_dir)
-            except Exception as exc:
-                logger.warning("Failed to rename PDF %s: %s", record["pdf_filename"], exc)
-
-        # ── 6. GENERATE CERTIFICATES ──────────────────────────────────────
-        certificate_dir = puma["CERTIFICATE_DIR"] / str(batch.pk)
-        certificate_dir.mkdir(parents=True, exist_ok=True)
-
-        template_path = puma["CERTIFICATE_TEMPLATE_PATH"]
-        if template_path.exists():
-            cert_records = [
-                {
-                    "style": r["style"],
-                    "inspection_date": r["inspection_date"],
-                    "po_qty": r["po_qty"],
-                    "actual_qty": r["actual_qty"],
-                    "inspected_qty": r["inspected_qty"],
-                    "factory_name": r["factory_name"],
-                    "factory_code": r["factory_code"],
-                    "final_customer": r["final_customer"],
-                    "po_numbers": r["po_numbers"],
-                }
-                for r in all_records
-            ]
-            generate_all_certificates(cert_records, template_path, certificate_dir)
-        else:
-            logger.warning("Certificate template not found at %s", template_path)
-
-        # ── 7. FINALISE ───────────────────────────────────────────────────
+        # ── 5. FINALISE ───────────────────────────────────────────────────
         still_unretried = batch.batch_failed_pdfs.filter(retried=False).exists()
         batch.status = (
             InspectionBatch.Status.PARTIAL
@@ -499,12 +479,12 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
 
         logger.info(
             "Retry Batch #%s done — recovered: %d, still failed: %d, missing: %d",
-            batch_id, len(created), len(new_failures), len(missing),
+            batch_id, len(saved_reports), len(new_failures), len(missing),
         )
         return {
             "batch_id":  batch_id,
             "status":    batch.status,
-            "recovered": len(created),
+            "recovered": len(saved_reports),
             "failed":    len(new_failures),
             "missing":   len(missing),
         }
