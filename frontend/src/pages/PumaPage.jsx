@@ -6,8 +6,8 @@ import OutputPanel from "../components/layout/OutputPanel";
 import { useOutputStore } from "../store/outputStore";
 import { UploadForm } from "../components/batch/BatchOutput";
 import {
-  fetchBatches, fetchBatch, fetchBatchLogs,
-  fetchReports, fetchReport,
+  fetchBatches, fetchBatch, fetchBatchLogs, retryBatch, downloadExcel,
+  fetchReports, fetchReport, downloadCertificate, fetchCertificateLogs,
 } from "../services/pumaApi";
 
 // ID input modal for endpoints that need a {id}
@@ -66,32 +66,11 @@ const ghostBtn = {
 export default function PumaPage() {
   const { setOutput, setLoading, addLog, clearOutput } = useOutputStore();
   const [activeId, setActiveId]   = useState(null);
-  const [prompt, setPrompt]       = useState(null); // { label, onConfirm }
-
-  const needsId = (label, handler) => {
-    setPrompt({ label, onConfirm: (id) => { setPrompt(null); handler(id); } });
-  };
 
   const handleSelect = async (ep) => {
     setActiveId(ep.id);
 
-    // Endpoints that need an ID
-    const idEndpoints = {
-      "batch-detail": (id) => loadBatchDetail(id),
-      "batch-retry":  (id) => triggerRetry(id),
-      "batch-logs":   (id) => loadBatchLogs(id),
-      "batch-excel":  (id) => downloadExcelById(id),
-      "report-detail":(id) => loadReportDetail(id),
-      "certificate":  (id) => downloadCertById(id),
-      "cert-logs":    (id) => loadCertLogs(id),
-    };
-
-    if (idEndpoints[ep.id]) {
-      needsId(`Enter ID for ${ep.label}`, idEndpoints[ep.id]);
-      return;
-    }
-
-    // Direct endpoints
+    // Direct endpoints (no ID needed)
     switch (ep.id) {
       case "upload":
         clearOutput();
@@ -103,7 +82,7 @@ export default function PumaPage() {
         addLog({ level: "info", message: "Fetching batch list…" });
         try {
           const data = await fetchBatches();
-          setOutput("batch-list", data, "All Batches");
+          setOutput("batch-list", data, "All Batches", { action: "view" });
           addLog({ level: "success", message: `Loaded ${(data.results || data).length} batches` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
@@ -116,7 +95,43 @@ export default function PumaPage() {
         addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
-          setOutput("report-list", data, "All Reports");
+          setOutput("report-list", data, "All Reports", { action: "view" });
+          addLog({ level: "success", message: `Loaded ${(data.results || data).length} reports` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed: ${e.message}` });
+          setLoading(false);
+        }
+        break;
+
+      // Endpoints that need selection from a list
+      case "batch-detail":
+      case "batch-retry":
+      case "batch-logs":
+      case "batch-excel":
+        // Show batch list with the appropriate action
+        setLoading(true);
+        addLog({ level: "info", message: "Fetching batch list…" });
+        try {
+          const data = await fetchBatches();
+          const action = ep.action; // view, retry, logs, excel
+          setOutput("batch-list", data, `Batches - ${ep.label}`, { action });
+          addLog({ level: "success", message: `Loaded ${(data.results || data).length} batches` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed: ${e.message}` });
+          setLoading(false);
+        }
+        break;
+
+      case "report-detail":
+      case "certificate":
+      case "cert-logs":
+        // Show report list with the appropriate action
+        setLoading(true);
+        addLog({ level: "info", message: "Fetching reports…" });
+        try {
+          const data = await fetchReports();
+          const action = ep.action; // view, certificate, cert-logs
+          setOutput("report-list", data, `Reports - ${ep.label}`, { action });
           addLog({ level: "success", message: `Loaded ${(data.results || data).length} reports` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
@@ -126,114 +141,106 @@ export default function PumaPage() {
     }
   };
 
-  // ── ID-based handlers ──────────────────────────────────────────────────────
+  // ── List-based handlers ──────────────────────────────────────────────────────
 
-  const loadBatchDetail = async (id) => {
-    setLoading(true);
-    addLog({ level: "info", message: `Loading Batch #${id}…` });
-    try {
-      const data = await fetchBatch(id);
-      setOutput("batch", data, `Batch #${id}`);
-      addLog({ level: "success", message: `Batch #${id} loaded` });
-    } catch (e) {
-      addLog({ level: "error", message: `Batch #${id} not found` });
-      setLoading(false);
+  const handleBatchAction = async (id, action) => {
+    switch (action) {
+      case "view":
+        setLoading(true);
+        addLog({ level: "info", message: `Loading Batch #${id}…` });
+        try {
+          const data = await fetchBatch(id);
+          setOutput("batch", data, `Batch #${id}`);
+          addLog({ level: "success", message: `Batch #${id} loaded` });
+        } catch (e) {
+          addLog({ level: "error", message: `Batch #${id} not found` });
+          setLoading(false);
+        }
+        break;
+      case "retry":
+        addLog({ level: "info", message: `Triggering retry for Batch #${id}…` });
+        try {
+          const res = await retryBatch(id);
+          addLog({ level: "success", message: `Retry started for Batch #${id} — ${res.files_retrying?.length} file(s)` });
+          // Also load batch detail after retry
+          setLoading(true);
+          const data = await fetchBatch(id);
+          setOutput("batch", data, `Batch #${id}`);
+        } catch (e) {
+          addLog({ level: "error", message: `Retry failed: ${e.response?.data?.detail || e.message}` });
+        }
+        break;
+      case "logs":
+        setLoading(true);
+        try {
+          const data = await fetchBatchLogs(id);
+          setOutput("logs", data, `Logs · Batch #${id}`);
+          addLog({ level: "info", message: `Logs loaded — ${data.total_failed} failed` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed to load logs for Batch #${id}` });
+          setLoading(false);
+        }
+        break;
+      case "excel":
+        addLog({ level: "info", message: `Downloading Excel for Batch #${id}…` });
+        try {
+          const blob = await downloadExcel(id);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = `batch-${id}.xlsx`; a.click();
+          URL.revokeObjectURL(url);
+          addLog({ level: "success", message: `Excel downloaded for Batch #${id}` });
+        } catch (e) {
+          addLog({ level: "error", message: `Excel download failed: ${e.response?.data?.detail || e.message}` });
+        }
+        break;
     }
   };
 
-  const triggerRetry = async (id) => {
-    addLog({ level: "info", message: `Triggering retry for Batch #${id}…` });
-    try {
-      const { retryBatch } = await import("../services/pumaApi");
-      const res = await retryBatch(id);
-      addLog({ level: "success", message: `Retry started for Batch #${id} — ${res.files_retrying?.length} file(s)` });
-      await loadBatchDetail(id);
-    } catch (e) {
-      addLog({ level: "error", message: `Retry failed: ${e.response?.data?.detail || e.message}` });
-    }
-  };
-
-  const loadBatchLogs = async (id) => {
-    setLoading(true);
-    addLog({ level: "info", message: `Fetching logs for Batch #${id}…` });
-    try {
-      const data = await fetchBatchLogs(id);
-      setOutput("logs", data, `Logs · Batch #${id}`);
-      addLog({ level: "info", message: `Logs loaded — ${data.total_failed} failed` });
-    } catch (e) {
-      addLog({ level: "error", message: `Failed to load logs for Batch #${id}` });
-      setLoading(false);
-    }
-  };
-
-  const downloadExcelById = async (id) => {
-    addLog({ level: "info", message: `Downloading Excel for Batch #${id}…` });
-    try {
-      const { downloadExcel } = await import("../services/pumaApi");
-      const blob = await downloadExcel(id);
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url; a.download = `batch-${id}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
-      addLog({ level: "success", message: `Excel downloaded for Batch #${id}` });
-    } catch (e) {
-      addLog({ level: "error", message: `Excel download failed: ${e.response?.data?.detail || e.message}` });
-    }
-  };
-
-  const loadReportDetail = async (id) => {
-    setLoading(true);
-    addLog({ level: "info", message: `Loading Report #${id}…` });
-    try {
-      const data = await fetchReport(id);
-      setOutput("report", data, `Report · ${data.style}`);
-      addLog({ level: "success", message: `Report ${data.style} loaded` });
-    } catch (e) {
-      addLog({ level: "error", message: `Report #${id} not found` });
-      setLoading(false);
-    }
-  };
-
-  const downloadCertById = async (id) => {
-    addLog({ level: "info", message: `Generating certificate for Report #${id}…` });
-    try {
-      const { downloadCertificate } = await import("../services/pumaApi");
-      const blob = await downloadCertificate(id);
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url; a.download = `certificate-report-${id}.docx`; a.click();
-      URL.revokeObjectURL(url);
-      addLog({ level: "success", message: `Certificate downloaded for Report #${id}` });
-    } catch (e) {
-      addLog({ level: "error", message: `Certificate failed: ${e.response?.data?.detail || e.message}` });
-    }
-  };
-
-  const loadCertLogs = async (id) => {
-    setLoading(true);
-    addLog({ level: "info", message: `Loading certificate logs for Report #${id}…` });
-    try {
-      const { fetchCertificateLogs } = await import("../services/pumaApi");
-      const data = await fetchCertificateLogs(id);
-      setOutput("report", { certificate_logs: data.results || data, id, style: `Report #${id}` }, `Cert Logs · #${id}`);
-      addLog({ level: "info", message: `${(data.results || data).length} certificate events` });
-    } catch (e) {
-      addLog({ level: "error", message: `Failed to load cert logs for Report #${id}` });
-      setLoading(false);
+  const handleReportAction = async (id, action) => {
+    switch (action) {
+      case "view":
+        setLoading(true);
+        addLog({ level: "info", message: `Loading Report #${id}…` });
+        try {
+          const data = await fetchReport(id);
+          setOutput("report", data, `Report · ${data.style}`);
+          addLog({ level: "success", message: `Report ${data.style} loaded` });
+        } catch (e) {
+          addLog({ level: "error", message: `Report #${id} not found` });
+          setLoading(false);
+        }
+        break;
+      case "certificate":
+        addLog({ level: "info", message: `Generating certificate for Report #${id}…` });
+        try {
+          const blob = await downloadCertificate(id);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = `certificate-report-${id}.docx`; a.click();
+          URL.revokeObjectURL(url);
+          addLog({ level: "success", message: `Certificate downloaded for Report #${id}` });
+        } catch (e) {
+          addLog({ level: "error", message: `Certificate failed: ${e.response?.data?.detail || e.message}` });
+        }
+        break;
+      case "cert-logs":
+        setLoading(true);
+        try {
+          const data = await fetchCertificateLogs(id);
+          setOutput("report", { certificate_logs: data.results || data, id, style: `Report #${id}` }, `Cert Logs · #${id}`);
+          addLog({ level: "info", message: `${(data.results || data).length} certificate events` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed to load cert logs for Report #${id}` });
+          setLoading(false);
+        }
+        break;
     }
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopNav />
-
-      {prompt && (
-        <IdPrompt
-          label={prompt.label}
-          onConfirm={prompt.onConfirm}
-          onCancel={() => setPrompt(null)}
-        />
-      )}
 
       {/* 3-column layout below the fixed nav */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden", paddingTop: "52px" }}>
