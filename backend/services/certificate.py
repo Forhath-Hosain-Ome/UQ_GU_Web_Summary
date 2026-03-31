@@ -115,9 +115,11 @@ def generate_certificate(record: dict, template_path: Path, output_dir: Path) ->
         _replace_in_document(doc, replacements, record["po_numbers"])
 
         po_str = ",".join(record["po_numbers"])
+        # Use inspection_date if available, otherwise fall back to current date
+        date_str = record.get("inspection_date") or datetime.now().strftime("%Y-%m-%d")
         filename = (
-            f"{datetime.now().strftime('%Y-%m-%d')} "
-            f"{record['style']}({po_str}) {record['factory_name']}.docx"
+            f"{date_str} "
+            f"{record['style']}({po_str}) {record['factory_code']}.docx"
         )
         output_path = output_dir / filename
 
