@@ -1,5 +1,5 @@
 import { useOutputStore } from "../../store/outputStore";
-import { downloadCertificate, fetchReport } from "../../services/pumaApi";
+import { downloadCertificate, fetchReport, fetchCertificateLogs } from "../../services/pumaApi";
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -9,17 +9,24 @@ function saveBlob(blob, filename) {
 }
 
 // ── Report list ───────────────────────────────────────────────────────────────
-function ReportList({ data, onSelect }) {
+function ReportList({ data, onSelect, action = "view" }) {
   const results = data?.results || data || [];
+  const sorted  = [...results].sort((a, b) => {
+    const dateA = a.report_date || a.inspection_date || "";
+    const dateB = b.report_date || b.inspection_date || "";
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
+    return b.id - a.id;
+  });
+
   return (
     <div className="fade-up" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <h2 style={{ fontFamily: "var(--font-display)", fontSize: "16px", fontWeight: 700, margin: "0 0 8px" }}>
-        Reports <span style={{ color: "var(--color-muted)", fontSize: "12px", fontWeight: 400 }}>({results.length})</span>
+        Reports <span style={{ color: "var(--color-muted)", fontSize: "12px", fontWeight: 400 }}>({sorted.length})</span>
       </h2>
-      {results.map((r) => (
+      {sorted.map((r) => (
         <div
           key={r.id}
-          onClick={() => onSelect(r.id)}
+          onClick={() => onSelect(r.id, action)}
           style={{
             display: "flex", gap: "12px", padding: "10px 14px",
             background: "var(--color-surface)", borderRadius: "6px",
@@ -29,10 +36,21 @@ function ReportList({ data, onSelect }) {
           onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--color-accent)"}
           onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--color-border)"}
         >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)", minWidth: "80px" }}>{r.style}</span>
-          <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)", flex: 1 }}>{r.factory_name || r.factory_code}</span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>{r.inspection_date}</span>
-          <span style={{ fontFamily: "var(--font-body)", fontSize: "11px", color: "var(--color-muted)", fontSize: "10px" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)", minWidth: "80px" }}>
+            {r.style}
+          </span>
+          <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)", flex: 1 }}>
+            {r.factory_name || r.factory_code}
+          </span>
+          {r.report_number && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-accent)", background: "rgba(99,102,241,0.1)", padding: "1px 7px", borderRadius: "3px" }}>
+              #{r.report_number}
+            </span>
+          )}
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+            {r.inspection_date}
+          </span>
+          <span style={{ fontFamily: "var(--font-body)", fontSize: "10px", color: "var(--color-muted)" }}>
             {r.po_numbers?.map((p) => p.number).join(", ")}
           </span>
           <span style={{ color: "var(--color-muted)", fontSize: "12px" }}>→</span>
@@ -57,27 +75,42 @@ function ReportDetail({ data }) {
   };
 
   const fields = [
-    ["Style",          data?.style],
-    ["Description",    data?.description],
-    ["Factory Code",   data?.factory_code],
-    ["Factory Name",   data?.factory_name],
-    ["Final Customer", data?.final_customer],
-    ["Inspection Date",data?.inspection_date],
-    ["Sample Size",    data?.sample_size],
-    ["PO Qty",         data?.po_qty],
-    ["Actual Qty",     data?.actual_qty],
-    ["Inspected Qty",  data?.inspected_qty],
-    ["Major Defect",   data?.major_defect],
-    ["Minor Defect",   data?.minor_defect],
+    ["Report Number",   data?.report_number || "—"],
+    ["Report Date",     data?.report_date],
+    ["Style",           data?.style],
+    ["Description",     data?.description],
+    ["Factory Code",    data?.factory_code],
+    ["Factory Name",    data?.factory_name],
+    ["Final Customer",  data?.final_customer],
+    ["Inspection Date", data?.inspection_date],
+    ["Sample Size",     data?.sample_size],
+    ["PO Qty",          data?.po_qty],
+    ["Actual Qty",      data?.actual_qty],
+    ["Inspected Qty",   data?.inspected_qty],
+    ["Major Defect",    data?.major_defect],
+    ["Minor Defect",    data?.minor_defect],
   ];
 
   return (
     <div className="fade-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 700, margin: 0 }}>
           {data?.style}
         </h2>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>#{data?.id}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+          #{data?.id}
+        </span>
+        {data?.report_number && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent)", background: "rgba(99,102,241,0.1)", padding: "2px 10px", borderRadius: "4px" }}>
+            Report #{data.report_number}
+          </span>
+        )}
+        {data?.created_by && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+            by {data.created_by.username}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <button
           onClick={handleCert}
@@ -93,10 +126,24 @@ function ReportDetail({ data }) {
 
       {/* Fields grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
-        {fields.map(([label, val]) => val && (
-          <div key={label} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "6px", padding: "10px 14px" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "4px" }}>{label.toUpperCase()}</div>
-            <div style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--color-text)" }}>{val}</div>
+        {fields.map(([label, val]) => val != null && val !== "" && (
+          <div
+            key={label}
+            style={{
+              background: "var(--color-surface)", border: "1px solid var(--color-border)",
+              borderRadius: "6px", padding: "10px 14px",
+              // Highlight the two date fields visually to distinguish them
+              borderLeft: (label === "Report Date" || label === "Inspection Date")
+                ? "2px solid var(--color-accent2)"
+                : "1px solid var(--color-border)",
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "4px" }}>
+              {label.toUpperCase()}
+            </div>
+            <div style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--color-text)" }}>
+              {String(val)}
+            </div>
           </div>
         ))}
       </div>
@@ -104,10 +151,18 @@ function ReportDetail({ data }) {
       {/* PO Numbers */}
       {data?.po_numbers?.length > 0 && (
         <div>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "8px" }}>PO NUMBERS</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "8px" }}>
+            PO NUMBERS
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {data.po_numbers.map((p) => (
-              <span key={p.id} style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)", background: "rgba(99,102,241,0.1)", padding: "3px 10px", borderRadius: "4px" }}>
+              <span
+                key={p.id}
+                style={{
+                  fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)",
+                  background: "rgba(99,102,241,0.1)", padding: "3px 10px", borderRadius: "4px",
+                }}
+              >
                 {p.number}
               </span>
             ))}
@@ -118,11 +173,22 @@ function ReportDetail({ data }) {
       {/* Certificate history */}
       {data?.certificate_logs?.length > 0 && (
         <div>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "8px" }}>CERTIFICATE HISTORY</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "8px" }}>
+            CERTIFICATE HISTORY
+          </div>
           {data.certificate_logs.map((c) => (
-            <div key={c.id} style={{ display: "flex", gap: "10px", padding: "7px 12px", background: "var(--color-surface)", borderRadius: "5px", border: "1px solid var(--color-border)", marginBottom: "4px", fontSize: "11px" }}>
-              <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-muted)" }}>{new Date(c.generated_at).toLocaleString()}</span>
-              <span style={{ color: "var(--color-muted)" }}>by {c.generated_by || "anon"}</span>
+            <div
+              key={c.id}
+              style={{
+                display: "flex", gap: "10px", padding: "7px 12px",
+                background: "var(--color-surface)", borderRadius: "5px",
+                border: "1px solid var(--color-border)", marginBottom: "4px", fontSize: "11px",
+              }}
+            >
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-muted)" }}>
+                {new Date(c.generated_at).toLocaleString()}
+              </span>
+              <span style={{ color: "var(--color-muted)" }}>by {c.generated_by || "system"}</span>
               {c.was_downloaded
                 ? <span style={{ color: "var(--color-success)", marginLeft: "auto" }}>✓ downloaded</span>
                 : <span style={{ color: "var(--color-warning)", marginLeft: "auto" }}>not downloaded</span>}
@@ -138,19 +204,48 @@ function ReportDetail({ data }) {
 export default function ReportOutput({ output }) {
   const { setOutput, setLoading, addLog } = useOutputStore();
 
-  const handleSelect = async (id) => {
-    setLoading(true);
-    try {
-      const data = await fetchReport(id);
-      setOutput("report", data, `Report · ${data.style}`);
-      addLog({ level: "info", message: `Loaded report ${data.style}` });
-    } catch (e) {
-      addLog({ level: "error", message: `Failed to load report #${id}` });
-      setLoading(false);
+  const handleSelect = async (id, action = "view") => {
+    switch (action) {
+      case "view":
+        setLoading(true);
+        try {
+          const data = await fetchReport(id);
+          setOutput("report", data, `Report · ${data.style}`);
+          addLog({ level: "info", message: `Loaded report ${data.style}` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed to load report #${id}` });
+          setLoading(false);
+        }
+        break;
+      case "certificate":
+        addLog({ level: "info", message: `Generating certificate for Report #${id}…` });
+        try {
+          const blob = await downloadCertificate(id);
+          saveBlob(blob, `cert-${id}.docx`);
+          addLog({ level: "success", message: `Certificate downloaded for Report #${id}` });
+        } catch (e) {
+          addLog({ level: "error", message: `Certificate failed: ${e.response?.data?.detail || e.message}` });
+        }
+        break;
+      case "cert-logs":
+        setLoading(true);
+        try {
+          const data = await fetchCertificateLogs(id);
+          setOutput(
+            "report",
+            { certificate_logs: data.results || data, id, style: `Report #${id}` },
+            `Cert Logs · #${id}`
+          );
+          addLog({ level: "info", message: `${(data.results || data).length} certificate events` });
+        } catch (e) {
+          addLog({ level: "error", message: `Failed to load cert logs for Report #${id}` });
+          setLoading(false);
+        }
+        break;
     }
   };
 
-  if (output.type === "report-list") return <ReportList data={output.data} onSelect={handleSelect} />;
+  if (output.type === "report-list") return <ReportList data={output.data} onSelect={handleSelect} action={output.action} />;
   if (output.type === "report")      return <ReportDetail data={output.data} />;
   return null;
 }
