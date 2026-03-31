@@ -3,6 +3,7 @@ from puma_summary.models import InspectionReport
 from .po_number_serializer import PONumberSerializer
 from .certificate_log_serializer import CertificateLogSerializer
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  INSPECTION REPORT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11,6 +12,8 @@ class InspectionReportSerializer(serializers.ModelSerializer):
     po_numbers       = PONumberSerializer(many=True, read_only=True)
     certificate_logs = CertificateLogSerializer(many=True, read_only=True)
     style_with_pos   = serializers.CharField(read_only=True)
+    # Resolved from batch FK — read-only convenience field
+    created_by       = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionReport
@@ -18,6 +21,8 @@ class InspectionReportSerializer(serializers.ModelSerializer):
             "id",
             "batch",
             "pdf_filename",
+            "report_number",
+            "report_date",
             "inspection_date",
             "style",
             "description",
@@ -33,9 +38,16 @@ class InspectionReportSerializer(serializers.ModelSerializer):
             "po_numbers",
             "certificate_logs",
             "style_with_pos",
+            "created_by",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_created_by(self, obj):
+        user = obj.batch.created_by
+        if user is None:
+            return None
+        return {"id": user.pk, "username": user.username}
 
 
 class InspectionReportListSerializer(serializers.ModelSerializer):
@@ -45,6 +57,7 @@ class InspectionReportListSerializer(serializers.ModelSerializer):
     """
     po_numbers     = PONumberSerializer(many=True, read_only=True)
     style_with_pos = serializers.CharField(read_only=True)
+    created_by     = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionReport
@@ -52,6 +65,8 @@ class InspectionReportListSerializer(serializers.ModelSerializer):
             "id",
             "batch",
             "pdf_filename",
+            "report_number",
+            "report_date",
             "inspection_date",
             "style",
             "description",
@@ -65,5 +80,12 @@ class InspectionReportListSerializer(serializers.ModelSerializer):
             "minor_defect",
             "po_numbers",
             "style_with_pos",
+            "created_by",
         ]
         read_only_fields = fields
+
+    def get_created_by(self, obj):
+        user = obj.batch.created_by
+        if user is None:
+            return None
+        return {"id": user.pk, "username": user.username}

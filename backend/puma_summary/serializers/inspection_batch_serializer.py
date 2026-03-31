@@ -13,11 +13,12 @@ class InspectionBatchSerializer(serializers.ModelSerializer):
     Full batch detail — includes nested reports and failed PDFs.
     Used for the batch detail/status endpoint.
     """
-    reports          = InspectionReportListSerializer(many=True, read_only=True)
-    failed_pdf_records = BatchFailedPDFSerializer(many=True, read_only=True, source='batch_failed_pdfs')
-    failed_pdfs_count = serializers.IntegerField(source='failed_pdfs', read_only=True)
-    success_rate     = serializers.FloatField(read_only=True)
-    progress_percent = serializers.IntegerField(read_only=True)
+    reports             = InspectionReportListSerializer(many=True, read_only=True)
+    failed_pdf_records  = BatchFailedPDFSerializer(many=True, read_only=True, source="batch_failed_pdfs")
+    failed_pdfs_count   = serializers.IntegerField(source="failed_pdfs", read_only=True)
+    success_rate        = serializers.FloatField(read_only=True)
+    progress_percent    = serializers.IntegerField(read_only=True)
+    created_by          = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionBatch
@@ -35,11 +36,18 @@ class InspectionBatchSerializer(serializers.ModelSerializer):
             "excel_report_path",
             "retry_count",
             "celery_task_id",
+            "created_by",
             "created_at",
             "updated_at",
             "reports",
         ]
         read_only_fields = fields
+
+    def get_created_by(self, obj):
+        user = obj.created_by
+        if user is None:
+            return None
+        return {"id": user.pk, "username": user.username}
 
 
 class InspectionBatchListSerializer(serializers.ModelSerializer):
@@ -50,6 +58,7 @@ class InspectionBatchListSerializer(serializers.ModelSerializer):
     progress_percent = serializers.IntegerField(read_only=True)
     report_count     = serializers.SerializerMethodField()
     failed_pdf_count = serializers.SerializerMethodField()
+    created_by       = serializers.SerializerMethodField()
 
     class Meta:
         model  = InspectionBatch
@@ -64,14 +73,20 @@ class InspectionBatchListSerializer(serializers.ModelSerializer):
             "retry_count",
             "report_count",
             "failed_pdf_count",
+            "created_by",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
 
     def get_report_count(self, obj):
-        # Uses prefetch_related cache if available — no extra query
         return obj.reports.count()
 
     def get_failed_pdf_count(self, obj):
         return obj.batch_failed_pdfs.count()
+
+    def get_created_by(self, obj):
+        user = obj.created_by
+        if user is None:
+            return None
+        return {"id": user.pk, "username": user.username}
