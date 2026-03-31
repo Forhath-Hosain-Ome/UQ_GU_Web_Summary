@@ -18,11 +18,6 @@ logger = logging.getLogger(__name__)
 #
 #  Channel group: "batch_<pk>"
 #        The Celery task sends to this group via the channel layer.
-#        All connected clients (e.g. multiple browser tabs) receive the same
-#        events automatically.
-#
-#  Message flow:
-#        Celery task  →  channel layer group  →  consumer  →  React client
 #
 #  Event shapes (JSON):
 #    progress : { event, batch_id, status, stage, progress_percent,
@@ -41,7 +36,6 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         user = self.scope.get("user")
 
-        # Reject unauthenticated connections immediately
         if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
             logger.warning("WS rejected — unauthenticated connection attempt.")
             await self.close(code=4401)
@@ -50,7 +44,6 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
         self.batch_pk   = self.scope["url_route"]["kwargs"]["pk"]
         self.group_name = f"batch_{self.batch_pk}"
 
-        # Verify the batch exists and the user may see it
         exists = await self._batch_exists(self.batch_pk)
         if not exists:
             logger.warning(
@@ -60,7 +53,6 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
             await self.close(code=4404)
             return
 
-        # Join the channel layer group
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 
@@ -69,9 +61,7 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
             self.batch_pk, user.username, self.channel_name,
         )
 
-        # Send the current batch snapshot immediately on connect so the
-        # React client can render the correct initial state without waiting
-        # for the next Celery push.
+        # Send current snapshot immediately so React renders correct initial state
         snapshot = await self._get_batch_snapshot(self.batch_pk)
         if snapshot:
             await self.send(text_data=json.dumps(snapshot))
@@ -84,15 +74,11 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
                 self.batch_pk, close_code,
             )
 
-    # The consumer is receive-only from the server side.
-    # React never needs to send messages — it only listens.
     async def receive(self, text_data=None, bytes_data=None):
+        # Consumer is receive-only from the server side — React only listens.
         pass
 
     # ── channel layer handlers ─────────────────────────────────────────────
-    # These methods are called by the channel layer when the Celery task
-    # sends a message to the group. The method name MUST match the
-    # "type" key in the group_send() call, with dots replaced by underscores.
 
     async def batch_progress(self, event):
         """Handles type="batch.progress" — incremental update."""
@@ -171,7 +157,7 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
             "progress_percent": batch.progress_percent,
             "processed":        batch.processed_pdfs,
             "total":            batch.total_pdfs,
-            "failed":           batch.failed_pdfs.count(),
+            "failed":           batch.failed_pdfs,   # integer field — NOT .count()
             "success_rate":     batch.success_rate,
         }
 
@@ -183,10 +169,10 @@ class BatchProgressConsumer(AsyncWebsocketConsumer):
 
             return {
                 **base,
-                "event":          "complete",
-                "report_count":   batch.reports.count(),
-                "failed_details": BatchFailedPDFSerializer(
-                    batch.failed_pdfs.all(), many=True
+                "event":           "complete",
+                "report_count":    batch.reports.count(),
+                "failed_details":  BatchFailedPDFSerializer(
+                    batch.batch_failed_pdfs.all(), many=True
                 ).data,
                 "excel_available": excel_available,
             }
