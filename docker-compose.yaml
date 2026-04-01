@@ -1,8 +1,7 @@
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
+    container_name: redis
     ports:
       - "6379:6379"
     volumes:
@@ -17,6 +16,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: backend
     ports:
       - "8000:8000"
     volumes:
@@ -37,6 +37,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: celery-worker
     volumes:
       - ./backend:/app
       - ./backend/media:/app/media
@@ -55,6 +56,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: celery-beat
     volumes:
       - ./backend:/app
       - ./backend/media:/app/media
@@ -73,13 +75,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: frontend
     ports:
       - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000/api
+      - VITE_API_URL=/api
+      - VITE_WS_URL=/ws
     depends_on:
       - backend
 
