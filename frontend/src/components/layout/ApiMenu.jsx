@@ -6,21 +6,21 @@ const SECTIONS = [
     endpoints: [
       { id: "upload",       label: "Upload PDFs",      method: "POST", path: "/batches/upload/",     icon: "⬆" },
       { id: "batch-list",   label: "List Batches",     method: "GET",  path: "/batches/",            icon: "≡", action: "list",  listType: "batch" },
-      { id: "batch-detail", label: "Batch Detail",     method: "GET",  path: "/batches/{id}/",       icon: "◎", action: "view" },
-      { id: "batch-retry",  label: "Retry Failed",     method: "POST", path: "/batches/{id}/retry/", icon: "↺", action: "retry" },
-      { id: "batch-logs",   label: "Batch Logs",       method: "GET",  path: "/batches/{id}/logs/",  icon: "∷", action: "logs" },
-      { id: "batch-excel",  label: "Download Excel",   method: "GET",  path: "/batches/{id}/excel/", icon: "⬇", action: "excel" },
+      // { id: "batch-detail", label: "Batch Detail",     method: "GET",  path: "/batches/{id}/",       icon: "◎", action: "view" },
+      // { id: "batch-retry",  label: "Retry Failed",     method: "POST", path: "/batches/{id}/retry/", icon: "↺", action: "retry" },
+      // { id: "batch-logs",   label: "Batch Logs",       method: "GET",  path: "/batches/{id}/logs/",  icon: "∷", action: "logs" },
+      // { id: "batch-excel",  label: "Download Excel",   method: "GET",  path: "/batches/{id}/excel/", icon: "⬇", action: "excel" },
     ],
-  },
-  {
-    label: "REPORTS",
-    endpoints: [
-      { id: "report-list",   label: "List Reports",     method: "GET", path: "/reports/",                   icon: "≡", action: "list", listType: "report" },
-      { id: "report-detail", label: "Report Detail",    method: "GET", path: "/reports/{id}/",              icon: "◎", action: "view" },
-      // Single click → downloads both the renamed PDF and the DOCX certificate
-      { id: "certificate",   label: "Download Cert + PDF", method: "GET", path: "/reports/{id}/certificate/ + /pdf/", icon: "⬇", action: "certificate" },
-      { id: "cert-logs",     label: "Certificate Logs", method: "GET", path: "/reports/{id}/certificates/", icon: "∷", action: "cert-logs" },
-    ],
+  // },
+  // {
+  //   label: "REPORTS",
+  //   endpoints: [
+  //     { id: "report-list",   label: "List Reports",     method: "GET", path: "/reports/",                   icon: "≡", action: "list", listType: "report" },
+  //     { id: "report-detail", label: "Report Detail",    method: "GET", path: "/reports/{id}/",              icon: "◎", action: "view" },
+  //     // Single click → downloads both the renamed PDF and the DOCX certificate
+  //     { id: "certificate",   label: "Download Cert + PDF", method: "GET", path: "/reports/{id}/certificate/ + /pdf/", icon: "⬇", action: "certificate" },
+  //     { id: "cert-logs",     label: "Certificate Logs", method: "GET", path: "/reports/{id}/certificates/", icon: "∷", action: "cert-logs" },
+  //   ],
   },
 ];
 

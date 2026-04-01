@@ -23,10 +23,10 @@ app_name = "puma_summary"
 #  POST /api/auth/token/refresh/   → exchange refresh token for new access token
 # ─────────────────────────────────────────────────────────────────────────────
 
-auth_urlpatterns = [
-    path("auth/token/",         TokenObtainPairView.as_view(), name="token_obtain"),
-    path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
-]
+# auth_urlpatterns = [
+#     path("auth/token/",         TokenObtainPairView.as_view(), name="token_obtain"),
+#     path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
+# ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -80,4 +80,4 @@ report_urlpatterns = [
 #  — they are NOT included here.
 # ─────────────────────────────────────────────────────────────────────────────
 
-urlpatterns = auth_urlpatterns + batch_urlpatterns + report_urlpatterns
+urlpatterns = batch_urlpatterns + report_urlpatterns

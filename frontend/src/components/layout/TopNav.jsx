@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 const SERVICES = [
   { id: "puma", label: "PUMA SUMMARY", path: "/puma" },
+  { id: "defect_image", label: "Defect Image", path: "/defect_image" },
   // Future services added here
 ];
 
