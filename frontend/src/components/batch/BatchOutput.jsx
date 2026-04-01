@@ -3,7 +3,7 @@ import { useDropzone } from "react-dropzone";
 import { useOutputStore } from "../../store/outputStore";
 import { useWsProgress } from "../../hooks/useWsProgress";
 import {
-  uploadBatch, fetchBatch, fetchBatchLogs, retryBatch, downloadExcel, downloadCertificate,
+  uploadBatch, fetchBatch, fetchBatchLogs, retryBatch, downloadExcel, downloadCertificate, downloadReportPDF,
 } from "../../services/pumaApi";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ const STATUS_COLOR = {
 };
 
 // ── Download dropdown ─────────────────────────────────────────────────────────
-function DownloadDropdown({ batchId, hasExcel, reports = [], onAction }) {
+function DownloadDropdown({ batchId, hasExcel, reports = [], reportCount = 0, onAction }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -204,6 +204,8 @@ function DownloadDropdown({ batchId, hasExcel, reports = [], onAction }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const activeReportCount = reportCount || reports.length || 0;
+
   const items = [
     hasExcel && {
       key: "excel",
@@ -211,11 +213,23 @@ function DownloadDropdown({ batchId, hasExcel, reports = [], onAction }) {
       icon: "📊",
       desc: "All reports in this batch",
     },
-    reports.length > 0 && {
+    activeReportCount > 0 && {
+      key: "pdfs",
+      label: `Reports (.pdf)`,
+      icon: "📄",
+      desc: `${activeReportCount} renamed PDF(s)`,
+    },
+    activeReportCount > 0 && {
       key: "certificates",
       label: `Certificates (.docx)`,
-      icon: "📄",
-      desc: `${reports.length} report cert(s)`,
+      icon: "📝",
+      desc: `${activeReportCount} certificate(s)`,
+    },
+    hasExcel && activeReportCount > 0 && {
+      key: "all",
+      label: "All files",
+      icon: "📦",
+      desc: "PDF, DOCX, and Excel for batch",
     },
   ].filter(Boolean);
 
@@ -365,6 +379,7 @@ function BatchRow({ batch, onAction }) {
 
   return (
     <div
+      onClick={() => onAction("view", batch.id)}
       style={{
         display: "grid",
         gridTemplateColumns: "48px 1fr 80px 90px 100px 96px",
@@ -376,6 +391,7 @@ function BatchRow({ batch, onAction }) {
         borderRadius: "7px",
         alignItems: "center",
         transition: "border-color 0.15s",
+        cursor: "pointer",
       }}
     >
       {/* ID */}
@@ -417,7 +433,6 @@ function BatchRow({ batch, onAction }) {
 
       {/* Actions */}
       <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-        <IconBtn title="View details" onClick={() => onAction("view", batch.id)}>◎</IconBtn>
         <IconBtn
           title={canRetry ? "Retry failed PDFs" : "No failures to retry"}
           disabled={!canRetry}
@@ -429,7 +444,8 @@ function BatchRow({ batch, onAction }) {
           batchId={batch.id}
           hasExcel={hasExcel}
           reports={reports}
-          onAction={(key) => onAction(key, batch.id, { reports })}
+          reportCount={batch.report_count || reports.length || 0}
+          onAction={(key) => onAction(key, batch.id, { reports, hasExcel })}
         />
       </div>
     </div>
@@ -656,20 +672,24 @@ function ReportCertBtn({ reportId, style: styleName, pdfFilename }) {
   const { addLog } = useOutputStore();
   const [busy, setBusy] = useState(false);
 
-  // Derive the .docx filename:
-  //   • if backend gives us "ABC123_factory.pdf"  → "ABC123_factory.docx"
-  //   • fallback: "cert-STYLE-ID.docx"
-  const docxName = pdfFilename
-    ? pdfFilename.replace(/\.pdf$/i, ".docx")
-    : `cert-${styleName}-${reportId}.docx`;
+  const pdfName = pdfFilename || `${styleName}-${reportId}.pdf`;
+  const docxName = pdfName.replace(/\.pdf$/i, ".docx");
 
   const handleClick = async (e) => {
     e.stopPropagation();
     setBusy(true);
-    addLog({ level: "info", message: `Generating certificate for ${styleName}…` });
+    addLog({ level: "info", message: `Downloading PDF + certificate for ${styleName}…` });
     try {
-      const blob = await downloadCertificate(reportId);
-      saveBlob(blob, docxName);
+      const pdfBlob = await downloadReportPDF(reportId);
+      saveBlob(pdfBlob, pdfName);
+      addLog({ level: "success", message: `PDF downloaded: ${pdfName}` });
+    } catch (err) {
+      addLog({ level: "error", message: `PDF failed: ${err.response?.data?.detail || err.message}` });
+    }
+
+    try {
+      const certBlob = await downloadCertificate(reportId);
+      saveBlob(certBlob, docxName);
       addLog({ level: "success", message: `Certificate downloaded: ${docxName}` });
     } catch (err) {
       addLog({ level: "error", message: `Certificate failed: ${err.response?.data?.detail || err.message}` });
@@ -823,22 +843,75 @@ export default function BatchOutput({ output }) {
         }
         break;
 
-      case "certificates":
-        // FIX: name each .docx after its source PDF (report.pdf_filename) when available.
-        addLog({ level: "info", message: `Downloading ${meta.reports?.length} certificate(s) for Batch #${id}…` });
-        for (const report of (meta.reports || [])) {
+      case "pdfs": {
+        const reports = meta.reports?.length ? meta.reports : (await fetchBatch(id)).reports || [];
+        addLog({ level: "info", message: `Downloading ${reports.length} PDF(s) for Batch #${id}…` });
+        for (const report of reports) {
           try {
-            const blob    = await downloadCertificate(report.id);
+            const pdfName = report.pdf_filename || `${report.style}-${report.id}.pdf`;
+            const blob = await downloadReportPDF(report.id);
+            saveBlob(blob, pdfName);
+            addLog({ level: "success", message: `PDF downloaded: ${pdfName}` });
+          } catch (e) {
+            addLog({ level: "error", message: `PDF failed: ${report.style}: ${e.response?.data?.detail || e.message}` });
+          }
+        }
+        break;
+      }
+
+      case "certificates": {
+        const reports = meta.reports?.length ? meta.reports : (await fetchBatch(id)).reports || [];
+        addLog({ level: "info", message: `Downloading ${reports.length} certificate(s) for Batch #${id}…` });
+        for (const report of reports) {
+          try {
+            const blob = await downloadCertificate(report.id);
             const docxName = report.pdf_filename
               ? report.pdf_filename.replace(/\.pdf$/i, ".docx")
               : `cert-${report.style}-${report.id}.docx`;
             saveBlob(blob, docxName);
-            addLog({ level: "success", message: `✓ ${docxName}` });
+            addLog({ level: "success", message: `Certificate downloaded: ${docxName}` });
           } catch (e) {
-            addLog({ level: "error", message: `✗ ${report.style}: ${e.response?.data?.detail || e.message}` });
+            addLog({ level: "error", message: `Certificate failed: ${report.style}: ${e.response?.data?.detail || e.message}` });
           }
         }
         break;
+      }
+
+      case "all": {
+        const reports = meta.reports?.length ? meta.reports : (await fetchBatch(id)).reports || [];
+        const includeExcel = meta.hasExcel ?? false;
+        addLog({ level: "info", message: `Downloading all files for Batch #${id}…` });
+        for (const report of reports) {
+          try {
+            const pdfName = report.pdf_filename || `${report.style}-${report.id}.pdf`;
+            const pdfBlob = await downloadReportPDF(report.id);
+            saveBlob(pdfBlob, pdfName);
+            addLog({ level: "success", message: `PDF downloaded: ${pdfName}` });
+          } catch (e) {
+            addLog({ level: "error", message: `PDF failed: ${report.style}: ${e.response?.data?.detail || e.message}` });
+          }
+          try {
+            const docxName = report.pdf_filename
+              ? report.pdf_filename.replace(/\.pdf$/i, ".docx")
+              : `cert-${report.style}-${report.id}.docx`;
+            const certBlob = await downloadCertificate(report.id);
+            saveBlob(certBlob, docxName);
+            addLog({ level: "success", message: `Certificate downloaded: ${docxName}` });
+          } catch (e) {
+            addLog({ level: "error", message: `Certificate failed: ${report.style}: ${e.response?.data?.detail || e.message}` });
+          }
+        }
+        if (includeExcel) {
+          try {
+            const blob = await downloadExcel(id);
+            saveBlob(blob, `batch-${id}.xlsx`);
+            addLog({ level: "success", message: `Excel downloaded for Batch #${id}` });
+          } catch (e) {
+            addLog({ level: "error", message: `Excel failed: ${e.response?.data?.detail || e.message}` });
+          }
+        }
+        break;
+      }
     }
   };
 

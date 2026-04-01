@@ -1,21 +1,26 @@
 import { useState } from "react";
 
-const ENDPOINTS = [
+const SECTIONS = [
   {
-    id: "upload",
-    label: "Upload PDFs",
-    method: "POST",
-    path: "/batches/upload/",
-    icon: "⬆",
+    label: "BATCHES",
+    endpoints: [
+      { id: "upload",       label: "Upload PDFs",      method: "POST", path: "/batches/upload/",     icon: "⬆" },
+      { id: "batch-list",   label: "List Batches",     method: "GET",  path: "/batches/",            icon: "≡", action: "list",  listType: "batch" },
+      { id: "batch-detail", label: "Batch Detail",     method: "GET",  path: "/batches/{id}/",       icon: "◎", action: "view" },
+      { id: "batch-retry",  label: "Retry Failed",     method: "POST", path: "/batches/{id}/retry/", icon: "↺", action: "retry" },
+      { id: "batch-logs",   label: "Batch Logs",       method: "GET",  path: "/batches/{id}/logs/",  icon: "∷", action: "logs" },
+      { id: "batch-excel",  label: "Download Excel",   method: "GET",  path: "/batches/{id}/excel/", icon: "⬇", action: "excel" },
+    ],
   },
   {
-    id: "batch-list",
-    label: "List Batches",
-    method: "GET",
-    path: "/batches/",
-    icon: "≡",
-    action: "list",
-    listType: "batch",
+    label: "REPORTS",
+    endpoints: [
+      { id: "report-list",   label: "List Reports",     method: "GET", path: "/reports/",                   icon: "≡", action: "list", listType: "report" },
+      { id: "report-detail", label: "Report Detail",    method: "GET", path: "/reports/{id}/",              icon: "◎", action: "view" },
+      // Single click → downloads both the renamed PDF and the DOCX certificate
+      { id: "certificate",   label: "Download Cert + PDF", method: "GET", path: "/reports/{id}/certificate/ + /pdf/", icon: "⬇", action: "certificate" },
+      { id: "cert-logs",     label: "Certificate Logs", method: "GET", path: "/reports/{id}/certificates/", icon: "∷", action: "cert-logs" },
+    ],
   },
 ];
 
@@ -25,6 +30,8 @@ const METHOD_COLORS = {
 };
 
 export default function ApiMenu({ onSelect, activeId }) {
+  const [collapsed, setCollapsed] = useState({});
+
   return (
     <nav
       style={{
@@ -37,135 +44,71 @@ export default function ApiMenu({ onSelect, activeId }) {
         overflow: "hidden",
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid var(--color-border)",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "10px",
-            fontWeight: 500,
-            letterSpacing: "0.1em",
-            color: "var(--color-muted)",
-          }}
-        >
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", color: "var(--color-muted)" }}>
           PUMA SUMMARY · API
         </span>
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "9px",
-            color: "var(--color-accent)",
-            marginTop: "3px",
-          }}
-        >
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-accent)", marginTop: "3px" }}>
           /api/
         </div>
       </div>
 
-      {/* Section label */}
-      <div style={{ padding: "10px 16px 4px" }}>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "9px",
-            fontWeight: 500,
-            letterSpacing: "0.12em",
-            color: "var(--color-muted)",
-          }}
-        >
-          BATCHES
-        </span>
-      </div>
-
-      {/* Endpoints */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 8px" }}>
-        {ENDPOINTS.map((ep) => {
-          const active = activeId === ep.id;
-          const mc     = METHOD_COLORS[ep.method] || METHOD_COLORS.GET;
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+        {SECTIONS.map((section) => {
+          const isCollapsed = collapsed[section.label];
           return (
-            <button
-              key={ep.id}
-              onClick={() => onSelect(ep)}
-              style={{
-                width: "100%",
-                background: active ? "var(--color-panel)" : "transparent",
-                border: active
-                  ? "1px solid var(--color-border)"
-                  : "1px solid transparent",
-                borderLeft: active
-                  ? "2px solid var(--color-accent)"
-                  : "2px solid transparent",
-                padding: "8px 10px",
-                borderRadius: "5px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                cursor: "pointer",
-                marginBottom: "2px",
-                transition: "all 0.12s",
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = "var(--color-panel)";
-              }}
-              onMouseLeave={(e) => {
-                if (!active) e.currentTarget.style.background = "transparent";
-              }}
-            >
-              {/* Method badge */}
-              <span
+            <div key={section.label} style={{ marginBottom: "8px" }}>
+              <button
+                onClick={() => setCollapsed((c) => ({ ...c, [section.label]: !c[section.label] }))}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "8px",
-                  fontWeight: 500,
-                  padding: "1px 5px",
-                  borderRadius: "3px",
-                  background: mc.bg,
-                  color: mc.text,
-                  minWidth: "32px",
-                  textAlign: "center",
-                  letterSpacing: "0.05em",
+                  width: "100%", background: "none", border: "none",
+                  padding: "5px 8px", display: "flex", alignItems: "center",
+                  justifyContent: "space-between", cursor: "pointer", borderRadius: "4px",
                 }}
               >
-                {ep.method}
-              </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "9px", fontWeight: 500, letterSpacing: "0.12em", color: "var(--color-muted)" }}>
+                  {section.label}
+                </span>
+                <span style={{ color: "var(--color-muted)", fontSize: "9px" }}>
+                  {isCollapsed ? "▶" : "▼"}
+                </span>
+              </button>
 
-              {/* Icon + label */}
-              <span style={{ fontSize: "11px", opacity: 0.5 }}>{ep.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontFamily: "var(--font-body)",
-                    fontSize: "12px",
-                    color: active ? "var(--color-text)" : "var(--color-muted)",
-                    fontWeight: active ? 500 : 400,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {ep.label}
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "9px",
-                    color: "var(--color-muted)",
-                    opacity: 0.6,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {ep.path}
-                </div>
-              </div>
-            </button>
+              {!isCollapsed && section.endpoints.map((ep) => {
+                const active = activeId === ep.id;
+                const mc     = METHOD_COLORS[ep.method] || METHOD_COLORS.GET;
+                return (
+                  <button
+                    key={ep.id}
+                    onClick={() => onSelect(ep)}
+                    style={{
+                      width: "100%",
+                      background: active ? "var(--color-panel)" : "transparent",
+                      border: active ? "1px solid var(--color-border)" : "1px solid transparent",
+                      borderLeft: active ? "2px solid var(--color-accent)" : "2px solid transparent",
+                      padding: "8px 10px", borderRadius: "5px",
+                      display: "flex", alignItems: "center", gap: "8px",
+                      cursor: "pointer", marginBottom: "2px", transition: "all 0.12s", textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--color-panel)"; }}
+                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "8px", fontWeight: 500, padding: "1px 5px", borderRadius: "3px", background: mc.bg, color: mc.text, minWidth: "32px", textAlign: "center", letterSpacing: "0.05em" }}>
+                      {ep.method}
+                    </span>
+                    <span style={{ fontSize: "11px", opacity: 0.5 }}>{ep.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: active ? "var(--color-text)" : "var(--color-muted)", fontWeight: active ? 500 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {ep.label}
+                      </div>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-muted)", opacity: 0.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {ep.path}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           );
         })}
       </div>

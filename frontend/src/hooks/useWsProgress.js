@@ -1,59 +1,100 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useAuthStore } from "../store/authStore";
 
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || null;
+
 /**
- * useBatchSocket(batchId, { onProgress, onComplete, onError })
- * Opens a WS connection to /ws/batches/<batchId>/progress/?token=<jwt>
- * Calls the appropriate callback on each message.
- * Automatically closes when batchId changes or component unmounts.
+ * useWsProgress(batchId, { onProgress, onComplete, onError })
+ *
+ * Opens a WS to /ws/batches/<batchId>/progress/?token=<jwt>.
+ * Automatically closes when batchId changes or the component unmounts.
+ *
+ * FIX — "WebSocket is closed before the connection is established" in dev:
+ * React 18 Strict Mode intentionally runs every effect twice in development
+ * (mount → unmount → mount) to surface side-effect bugs. The first mount opens
+ * the socket, the cleanup immediately closes it, then the second mount opens
+ * another one — but the first close arrives at the browser while the second
+ * socket is still mid-handshake, producing the error.
+ *
+ * Fix: an `isCancelled` flag is captured in the cleanup closure. When React
+ * tears down the first effect cycle, isCancelled flips to true and all handlers
+ * on the orphaned socket become no-ops. The second cycle opens a fresh socket
+ * that lives for the full lifetime of the component.
  */
 export function useWsProgress(batchId, { onProgress, onComplete, onError } = {}) {
   const wsRef    = useRef(null);
   const timerRef = useRef(null);
 
-  const connect = useCallback(() => {
+  // Stable refs for callbacks — always current but never trigger reconnect.
+  const onProgressRef = useRef(onProgress);
+  const onCompleteRef = useRef(onComplete);
+  const onErrorRef    = useRef(onError);
+  useEffect(() => { onProgressRef.current = onProgress; }, [onProgress]);
+  useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
+  useEffect(() => { onErrorRef.current    = onError;    }, [onError]);
+
+  useEffect(() => {
     if (!batchId) return;
     const token = useAuthStore.getState().access;
     if (!token)  return;
 
-    const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const url   = `${proto}://${window.location.host}/ws/batches/${batchId}/progress/?token=${token}`;
+    // This flag is captured by every handler closure below.
+    // The cleanup sets it to true so the orphaned socket from Strict Mode's
+    // first cycle silently discards all events instead of calling stale callbacks.
+    let isCancelled = false;
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    const wsBase = WS_BASE_URL ? WS_BASE_URL.replace(/\/+$/g, "") : null;
+    const url = wsBase
+      ? `${wsBase}/batches/${batchId}/progress/?token=${token}`
+      : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/batches/${batchId}/progress/?token=${token}`;
 
-    ws.onopen = () => {
-      // Clear any reconnect timer
-      if (timerRef.current) clearTimeout(timerRef.current);
+    const openSocket = () => {
+      if (isCancelled) return;
+
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (isCancelled) { ws.close(1000); return; }
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
+
+      ws.onmessage = (e) => {
+        if (isCancelled) return;
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        if (msg.event === "progress") onProgressRef.current?.(msg);
+        if (msg.event === "complete") {
+          onCompleteRef.current?.(msg);
+          ws.close(1000);
+        }
+        if (msg.event === "error") onErrorRef.current?.(msg);
+      };
+
+      ws.onclose = (e) => {
+        if (isCancelled) return;
+        if (e.code !== 1000 && e.code !== 4401 && e.code !== 4404) {
+          timerRef.current = setTimeout(openSocket, 3000);
+        }
+      };
+
+      ws.onerror = () => {
+        if (isCancelled) return;
+        ws.close();
+      };
     };
 
-    ws.onmessage = (e) => {
-      let msg;
-      try { msg = JSON.parse(e.data); } catch { return; }
+    openSocket();
 
-      if (msg.event === "progress") onProgress?.(msg);
-      if (msg.event === "complete") {
-        onComplete?.(msg);
-        ws.close(1000); // clean close — no more updates expected
-      }
-      if (msg.event === "error") onError?.(msg);
-    };
-
-    ws.onclose = (e) => {
-      // Reconnect unless intentional close (1000) or batch is done
-      if (e.code !== 1000 && e.code !== 4401 && e.code !== 4404) {
-        timerRef.current = setTimeout(connect, 3000);
-      }
-    };
-
-    ws.onerror = () => ws.close();
-  }, [batchId, onProgress, onComplete, onError]);
-
-  useEffect(() => {
-    connect();
     return () => {
+      isCancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
-      wsRef.current?.close(1000);
+      const currentWs = wsRef.current;
+      if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+        currentWs.close(1000);
+      }
+      wsRef.current = null;
     };
-  }, [connect]);
+  }, [batchId]); // only reconnect when the batch actually changes
 }

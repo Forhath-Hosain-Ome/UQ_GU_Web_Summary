@@ -1,5 +1,10 @@
 import { useOutputStore } from "../../store/outputStore";
-import { downloadCertificate, fetchReport, fetchCertificateLogs } from "../../services/pumaApi";
+import {
+  downloadCertificate,
+  downloadReportPDF,
+  fetchReport,
+  fetchCertificateLogs,
+} from "../../services/pumaApi";
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -8,7 +13,61 @@ function saveBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Download PDF and DOCX certificate for a report.
+ *
+ * BUG FIX — only DOCX was downloading:
+ * Browsers silently drop programmatic anchor clicks that happen within the
+ * same synchronous tick (or too close together). The original code called
+ * saveBlob twice back-to-back after Promise.allSettled resolved — the browser
+ * swallowed the first click and only executed the second. Fix: stagger the
+ * two saveBlob calls with a small setTimeout so each lives in its own task.
+ */
+async function downloadBoth(report, addLog) {
+  addLog({ level: "info", message: `Downloading PDF + Certificate for ${report.style}…` });
+
+  const pdfFilename = (
+    `Apparel Report_${report.style} ${report.factory_code}, ` +
+    `Puma Warehouse WH AQL, PO ${report.po_numbers?.[0]?.number || ""}, ` +
+    `Customer ${report.final_customer}.pdf`
+  );
+  const docxFilename = (
+    `${report.report_date || ""} ` +
+    `${report.style}(${report.po_numbers?.map((p) => p.number).join(",") || ""}) ` +
+    `${report.factory_name}.docx`
+  );
+
+  const [pdfResult, certResult] = await Promise.allSettled([
+    downloadReportPDF(report.id),
+    downloadCertificate(report.id),
+  ]);
+
+  // Trigger PDF download first …
+  if (pdfResult.status === "fulfilled") {
+    saveBlob(pdfResult.value, pdfFilename);
+    addLog({ level: "success", message: `PDF downloaded: ${pdfFilename}` });
+  } else {
+    addLog({ level: "error", message: `PDF failed: ${pdfResult.reason?.response?.data?.detail || pdfResult.reason?.message}` });
+  }
+
+  // … then DOCX 300 ms later so the browser treats them as separate user-gesture tasks.
+  await new Promise((res) => setTimeout(res, 300));
+
+  if (certResult.status === "fulfilled") {
+    saveBlob(certResult.value, docxFilename);
+    addLog({ level: "success", message: `Certificate downloaded: ${docxFilename}` });
+  } else {
+    addLog({ level: "error", message: `Certificate failed: ${certResult.reason?.response?.data?.detail || certResult.reason?.message}` });
+  }
+}
+
 // ── Report list ───────────────────────────────────────────────────────────────
+// FIX — row click behaviour:
+// Previously the row called onSelect(id, action), which meant clicking a row
+// in "Download Cert + PDF" mode triggered the download directly without ever
+// showing the report detail. Now every row click ALWAYS navigates to the report
+// detail (action = "view"). The action passed from the sidebar is forwarded to
+// the detail page so it can show the right contextual button / auto-trigger there.
 function ReportList({ data, onSelect, action = "view" }) {
   const results = data?.results || data || [];
   const sorted  = [...results].sort((a, b) => {
@@ -26,7 +85,8 @@ function ReportList({ data, onSelect, action = "view" }) {
       {sorted.map((r) => (
         <div
           key={r.id}
-          onClick={() => onSelect(r.id, action)}
+          // Always open detail on row click — action is handled from within the detail view.
+          onClick={() => onSelect(r.id, "view")}
           style={{
             display: "flex", gap: "12px", padding: "10px 14px",
             background: "var(--color-surface)", borderRadius: "6px",
@@ -63,16 +123,6 @@ function ReportList({ data, onSelect, action = "view" }) {
 // ── Report detail ─────────────────────────────────────────────────────────────
 function ReportDetail({ data }) {
   const { addLog } = useOutputStore();
-
-  const handleCert = async () => {
-    try {
-      const blob = await downloadCertificate(data.id);
-      saveBlob(blob, `cert-${data.style}-${data.id}.docx`);
-      addLog({ level: "success", message: `Certificate downloaded for ${data.style}` });
-    } catch (e) {
-      addLog({ level: "error", message: `Certificate download failed: ${e.response?.data?.detail || e.message}` });
-    }
-  };
 
   const fields = [
     ["Report Number",   data?.report_number || "—"],
@@ -113,14 +163,15 @@ function ReportDetail({ data }) {
         )}
         <div style={{ flex: 1 }} />
         <button
-          onClick={handleCert}
+          onClick={() => downloadBoth(data, addLog)}
           style={{
             background: "rgba(34,211,160,0.1)", border: "1px solid rgba(34,211,160,0.25)",
-            color: "var(--color-success)", padding: "5px 14px", borderRadius: "5px",
+            color: "var(--color-success)", padding: "5px 16px", borderRadius: "5px",
             fontFamily: "var(--font-mono)", fontSize: "11px", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: "6px",
           }}
         >
-          ⬇ Certificate (.docx)
+          ⬇ PDF + Certificate
         </button>
       </div>
 
@@ -132,7 +183,6 @@ function ReportDetail({ data }) {
             style={{
               background: "var(--color-surface)", border: "1px solid var(--color-border)",
               borderRadius: "6px", padding: "10px 14px",
-              // Highlight the two date fields visually to distinguish them
               borderLeft: (label === "Report Date" || label === "Inspection Date")
                 ? "2px solid var(--color-accent2)"
                 : "1px solid var(--color-border)",
@@ -156,13 +206,7 @@ function ReportDetail({ data }) {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {data.po_numbers.map((p) => (
-              <span
-                key={p.id}
-                style={{
-                  fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)",
-                  background: "rgba(99,102,241,0.1)", padding: "3px 10px", borderRadius: "4px",
-                }}
-              >
+              <span key={p.id} style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)", background: "rgba(99,102,241,0.1)", padding: "3px 10px", borderRadius: "4px" }}>
                 {p.number}
               </span>
             ))}
@@ -177,14 +221,7 @@ function ReportDetail({ data }) {
             CERTIFICATE HISTORY
           </div>
           {data.certificate_logs.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                display: "flex", gap: "10px", padding: "7px 12px",
-                background: "var(--color-surface)", borderRadius: "5px",
-                border: "1px solid var(--color-border)", marginBottom: "4px", fontSize: "11px",
-              }}
-            >
+            <div key={c.id} style={{ display: "flex", gap: "10px", padding: "7px 12px", background: "var(--color-surface)", borderRadius: "5px", border: "1px solid var(--color-border)", marginBottom: "4px", fontSize: "11px" }}>
               <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-muted)" }}>
                 {new Date(c.generated_at).toLocaleString()}
               </span>
@@ -204,6 +241,10 @@ function ReportDetail({ data }) {
 export default function ReportOutput({ output }) {
   const { setOutput, setLoading, addLog } = useOutputStore();
 
+  // Row clicks always land here with action = "view" now.
+  // The "certificate" case in the sidebar still works: PumaPage sets
+  // action: "certificate" on the list, but row clicks override to "view"
+  // so the user sees the detail page and clicks the download button themselves.
   const handleSelect = async (id, action = "view") => {
     switch (action) {
       case "view":
@@ -217,16 +258,19 @@ export default function ReportOutput({ output }) {
           setLoading(false);
         }
         break;
+
       case "certificate":
-        addLog({ level: "info", message: `Generating certificate for Report #${id}…` });
+        // Reached only if something explicitly calls onSelect with "certificate"
+        // (not from a row click anymore). Fetch the full report then download both.
+        addLog({ level: "info", message: `Loading Report #${id}…` });
         try {
-          const blob = await downloadCertificate(id);
-          saveBlob(blob, `cert-${id}.docx`);
-          addLog({ level: "success", message: `Certificate downloaded for Report #${id}` });
+          const data = await fetchReport(id);
+          await downloadBoth(data, addLog);
         } catch (e) {
-          addLog({ level: "error", message: `Certificate failed: ${e.response?.data?.detail || e.message}` });
+          addLog({ level: "error", message: `Failed: ${e.message}` });
         }
         break;
+
       case "cert-logs":
         setLoading(true);
         try {

@@ -20,7 +20,13 @@ export default function LoginPage() {
       authLogin(access, refresh);
       navigate("/puma");
     } catch (e) {
-      setError(e.response?.data?.detail || "Invalid credentials.");
+      const responseData = e.response?.data;
+      const message =
+        responseData?.detail ||
+        (responseData && typeof responseData === "string" ? responseData : JSON.stringify(responseData)) ||
+        e.message ||
+        "Invalid credentials.";
+      setError(message);
     } finally {
       setLoading(false);
     }

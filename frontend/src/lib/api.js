@@ -1,7 +1,9 @@
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
 
-const api = axios.create({ baseURL: "/api" });
+const api = axios.create({
+  baseURL: `${(import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "")}/`,
+});
 
 // Attach access token to every request
 api.interceptors.request.use((config) => {
@@ -20,7 +22,7 @@ api.interceptors.response.use(
       const refresh = useAuthStore.getState().refresh;
       if (refresh) {
         try {
-          const { data } = await axios.post("/api/auth/token/refresh/", { refresh });
+          const { data } = await api.post("auth/token/refresh/", { refresh });
           useAuthStore.getState().setAccess(data.access);
           original.headers.Authorization = `Bearer ${data.access}`;
           return api(original);
