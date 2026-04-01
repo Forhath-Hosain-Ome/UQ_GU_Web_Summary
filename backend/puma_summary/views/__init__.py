@@ -8,3 +8,4 @@ from .certificate_log_list_view import CertificateLogListView
 from .excel_download_view import ExcelDownloadView
 from .report_details_view import ReportDetailView
 from .report_list_view import ReportListView
+from .pdf_download_view import ReportPDFDownloadView

@@ -148,6 +148,7 @@ def _generate_cert_for_report(
     record = {
         "style":           report.style,
         "inspection_date": str(report.inspection_date or ""),
+        "report_date":     str(report.report_date),
         "po_qty":          report.po_qty,
         "actual_qty":      report.actual_qty,
         "inspected_qty":   report.inspected_qty,
@@ -211,13 +212,18 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         # ── 1. EXTRACT ────────────────────────────────────────────────────
         batch.status = InspectionBatch.Status.PROCESSING
         batch.save(update_fields=["status"])
-        _push_progress(batch, STAGE_EXTRACTING)
 
         folder            = Path(batch.source_folder)
         records, failures = extract_folder(folder)
 
+        # BUG FIX: set total_pdfs BEFORE the first _push_progress call.
+        # Previously the push fired while total_pdfs was still 0 (it hadn't
+        # been written to the DB yet), so the WebSocket event told the
+        # frontend "0/0" and overwrote the correct value from the HTTP response.
         batch.total_pdfs = len(records) + len(failures)
         batch.save(update_fields=["total_pdfs"])
+
+        _push_progress(batch, STAGE_EXTRACTING)
 
         _save_failed_pdfs(batch, failures)
 
@@ -240,6 +246,14 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         certs_enabled = template_path.exists()
         if not certs_enabled:
             logger.warning("Certificate template not found at %s — skipping cert generation", template_path)
+
+        # BUG FIX: renamed PDFs must land in the dedicated output directory,
+        # not back into the uploads source folder.  Previously copy_and_rename
+        # was called with `folder` (the uploads dir) as output_dir, which means
+        # the renamed file was written alongside the originals and never reached
+        # media/output/puma/renamed_pdfs/{batch_id}/.
+        renamed_pdf_dir = puma["OUTPUT_DIR"] / "renamed_pdfs" / str(batch.pk)
+        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
 
         saved_reports = []
         for r in records:
@@ -273,11 +287,12 @@ def process_inspection_batch(self, batch_id: int) -> dict:
 
             saved_reports.append(report)
 
-            # Rename the source PDF in-place right after processing
+            # Copy source PDF to the renamed_pdfs output directory with the
+            # standardised filename, then delete the original from uploads.
             source_path = folder / r["pdf_filename"]
             if source_path.exists():
                 try:
-                    copy_and_rename(source_path, r, folder)
+                    copy_and_rename(source_path, r, renamed_pdf_dir)
                 except Exception as exc:
                     logger.warning("Failed to rename PDF %s: %s", r["pdf_filename"], exc)
 
@@ -393,6 +408,11 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
         template_path = Path(puma["CERTIFICATE_TEMPLATE_PATH"])
         certs_enabled = template_path.exists()
 
+        # BUG FIX: same as the main task — output to renamed_pdfs dir, not back
+        # into the uploads source folder.
+        renamed_pdf_dir = puma["OUTPUT_DIR"] / "renamed_pdfs" / str(batch.pk)
+        renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
+
         saved_reports = []
         for r in records:
             report = InspectionReport.objects.create(
@@ -422,11 +442,11 @@ def retry_failed_pdfs(self, batch_id: int, filenames: list[str]) -> dict:
 
             saved_reports.append(report)
 
-            # Rename this PDF in-place immediately
+            # Rename recovered PDF into the correct output directory
             source_path = folder / r["pdf_filename"]
             if source_path.exists():
                 try:
-                    copy_and_rename(source_path, r, folder)
+                    copy_and_rename(source_path, r, renamed_pdf_dir)
                 except Exception as exc:
                     logger.warning("Failed to rename PDF %s: %s", r["pdf_filename"], exc)
 

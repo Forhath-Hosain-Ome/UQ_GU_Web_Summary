@@ -26,12 +26,20 @@ SECRET_KEY = 'django-insecure-bybxt97-yxn5dgy73aljwqk$u41f(af%eiwcx!bj9#$tp2aj%n
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'backend',
+    # Add your production domain here, e.g. 'myapp.example.com'
+]
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
+    'channels',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -106,7 +114,8 @@ SIMPLE_JWT = {
 }
 
 # ── Django Channels ───────────────────────────────────────────────────────────
-ASGI_APPLICATION = "summary_backend.asgi.application"   # adjust to your project name
+WSGI_APPLICATION = 'summary_backend.wsgi.application'
+ASGI_APPLICATION = 'summary_backend.asgi.application'   # adjust to your project name
  
 CHANNEL_LAYERS = {
     "default": {
@@ -126,6 +135,7 @@ CHANNEL_LAYERS = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",   # Vite default
     "http://localhost:3000",   # CRA default
+    os.getenv('DJANGO_ALLOWED_HOST', '')
 ]
 
 # Allow credentials (cookies, authorization headers) for cross-origin requests
@@ -219,6 +229,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOGGING = {
     "version": 1,
@@ -233,6 +244,11 @@ LOGGING = {
     },
 
     "loggers": {
+        "puma_summary": {
+            "handlers": ["file"],
+            "level": "INFO",
+            "propagate": True,
+        },
         "pdf": {
             "handlers": ["file"],
             "level": "INFO",
@@ -254,3 +270,9 @@ PUMA_SETTINGS = {
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+
+CELERY_TASK_DEFAULT_QUEUE = 'celery'
+CELERY_TASK_ROUTES = {
+    'puma_summary.process_inspection_batch': {'queue': 'celery'},
+    'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
+}

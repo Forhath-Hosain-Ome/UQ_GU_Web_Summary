@@ -12,6 +12,7 @@ from puma_summary.views import (
     ExcelDownloadView,
     ReportDetailView,
     ReportListView,
+    ReportPDFDownloadView,
 )
 
 app_name = "puma_summary"
@@ -23,16 +24,8 @@ app_name = "puma_summary"
 # ─────────────────────────────────────────────────────────────────────────────
 
 auth_urlpatterns = [
-    path(
-        "auth/token/",
-        TokenObtainPairView.as_view(),
-        name="token_obtain",
-    ),
-    path(
-        "auth/token/refresh/",
-        TokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
+    path("auth/token/",         TokenObtainPairView.as_view(), name="token_obtain"),
+    path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
 ]
 
 
@@ -47,36 +40,12 @@ auth_urlpatterns = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 batch_urlpatterns = [
-    path(
-        "batches/upload/",
-        BatchUploadView.as_view(),
-        name="batch_upload",
-    ),
-    path(
-        "batches/",
-        BatchListView.as_view(),
-        name="batch_list",
-    ),
-    path(
-        "batches/<int:pk>/",
-        BatchDetailView.as_view(),
-        name="batch_detail",
-    ),
-    path(
-        "batches/<int:pk>/retry/",
-        BatchRetryView.as_view(),
-        name="batch_retry",
-    ),
-    path(
-        "batches/<int:pk>/logs/",
-        BatchLogsView.as_view(),
-        name="batch_logs",
-    ),
-    path(
-        "batches/<int:pk>/excel/",
-        ExcelDownloadView.as_view(),
-        name="batch_excel_download",
-    ),
+    path("batches/upload/",          BatchUploadView.as_view(),  name="batch_upload"),
+    path("batches/",                 BatchListView.as_view(),    name="batch_list"),
+    path("batches/<int:pk>/",        BatchDetailView.as_view(),  name="batch_detail"),
+    path("batches/<int:pk>/retry/",  BatchRetryView.as_view(),  name="batch_retry"),
+    path("batches/<int:pk>/logs/",   BatchLogsView.as_view(),   name="batch_logs"),
+    path("batches/<int:pk>/excel/",  ExcelDownloadView.as_view(),name="batch_excel_download"),
 ]
 
 
@@ -89,26 +58,11 @@ batch_urlpatterns = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 report_urlpatterns = [
-    path(
-        "reports/",
-        ReportListView.as_view(),
-        name="report_list",
-    ),
-    path(
-        "reports/<int:pk>/",
-        ReportDetailView.as_view(),
-        name="report_detail",
-    ),
-    path(
-        "reports/<int:pk>/certificate/",
-        CertificateDownloadView.as_view(),
-        name="certificate_download",
-    ),
-    path(
-        "reports/<int:pk>/certificates/",
-        CertificateLogListView.as_view(),
-        name="certificate_log_list",
-    ),
+    path("reports/",                         ReportListView.as_view(),          name="report_list"),
+    path("reports/<int:pk>/",                ReportDetailView.as_view(),        name="report_detail"),
+    path("reports/<int:pk>/pdf/",            ReportPDFDownloadView.as_view(),   name="report_pdf_download"),
+    path("reports/<int:pk>/certificate/",    CertificateDownloadView.as_view(), name="certificate_download"),
+    path("reports/<int:pk>/certificates/",   CertificateLogListView.as_view(),  name="certificate_log_list"),
 ]
 
 
