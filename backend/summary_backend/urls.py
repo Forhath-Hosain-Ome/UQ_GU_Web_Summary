@@ -9,4 +9,5 @@ urlpatterns = [
     path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
 
     path("api/", include("puma_summary.urls", namespace="puma_summary")),
+    path("image/", include("image_processor.urls", namespace="image_processor")),
 ]

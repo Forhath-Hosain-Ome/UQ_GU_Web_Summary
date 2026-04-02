@@ -17,17 +17,6 @@ from puma_summary.views import (
 
 app_name = "puma_summary"
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  AUTH
-#  POST /api/auth/token/           → obtain access + refresh tokens
-#  POST /api/auth/token/refresh/   → exchange refresh token for new access token
-# ─────────────────────────────────────────────────────────────────────────────
-
-# auth_urlpatterns = [
-#     path("auth/token/",         TokenObtainPairView.as_view(), name="token_obtain"),
-#     path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
-# ]
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  BATCHES
