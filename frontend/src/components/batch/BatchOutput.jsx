@@ -3,8 +3,21 @@ import { useDropzone } from "react-dropzone";
 import { useOutputStore } from "../../store/outputStore";
 import { useWsProgress } from "../../hooks/useWsProgress";
 import {
-  uploadBatch, fetchBatch, fetchBatchLogs, retryBatch, downloadExcel, downloadCertificate, downloadReportPDF,
+  uploadBatch as uploadBatchPuma,
+  fetchBatch as fetchBatchPuma,
+  fetchBatchLogs as fetchBatchLogsPuma,
+  retryBatch as retryBatchPuma,
+  downloadExcel as downloadExcelPuma,
+  downloadCertificate as downloadCertificatePuma,
+  downloadReportPDF as downloadReportPDFPuma,
 } from "../../services/pumaApi";
+import {
+  uploadBatch as uploadBatchImage,
+  fetchBatch as fetchBatchImage,
+  fetchBatchLogs as fetchBatchLogsImage,
+  downloadReportPDF as downloadReportPDFImage,
+  downloadReportDOCX as downloadReportDOCXImage,
+} from "../../services/defectImageApi";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function saveBlob(blob, filename) {
@@ -20,9 +33,11 @@ function saveBlob(blob, filename) {
 // OutputPanel to remount UploadForm fresh. The fix: store both values inside
 // output.data (the store) so they survive remounts. initData carries whatever
 // was already in output.data when the component mounts.
-export function UploadForm({ initData = {} }) {
+export function UploadForm({ initData = {}, source = "puma" }) {
   const { addLog, setOutput, setLoading } = useOutputStore();
   const [files, setFiles]       = useState([]);
+  const [date, setDate]         = useState(initData.date || new Date().toISOString().slice(0, 10));
+  const [style, setStyle]       = useState(initData.style || "");
   // Seed from store so progress survives remounts
   const [batchId, setBatch]     = useState(initData.batch_id ?? null);
   const [progress, setProgress] = useState(initData.progress ?? null);
@@ -38,29 +53,42 @@ export function UploadForm({ initData = {} }) {
     []
   );
 
+  const isImageUpload = source === "image";
+  const serviceUpload = isImageUpload ? uploadBatchImage : uploadBatchPuma;
+  const serviceFetchBatch = isImageUpload ? fetchBatchImage : fetchBatchPuma;
+  const uploadLabel = isImageUpload ? "image(s)" : "PDF(s)";
+
   const onDrop = useCallback((accepted) => setFiles(accepted), []);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { "application/pdf": [".pdf"] },
+    accept: isImageUpload
+      ? { "image/*": [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"] }
+      : { "application/pdf": [".pdf"] },
     multiple: true,
   });
 
   const handleUpload = async () => {
     if (!files.length) return;
     setLoading(true);
-    addLog({ level: "info", message: `Uploading ${files.length} PDF(s)…` });
+addLog({ level: "info", message: `Uploading ${files.length} ${uploadLabel}…` });
     try {
-      const res = await uploadBatch(files);
-      const initialProgress = { processed: 0, total: res.total_pdfs, percent: 0, stage: "QUEUED" };
+      const paths = isImageUpload ? files.map((f) => f.webkitRelativePath || f.name) : [];
+      const res = isImageUpload
+        ? await serviceUpload(files, paths, date, style)
+        : await serviceUpload(files);
+
+      const totalItems = res.total_pdfs ?? res.total_folders ?? files.length;
+      const initialProgress = { processed: 0, total: totalItems, percent: 0, stage: "QUEUED" };
       setBatch(res.batch_id);
       setProgress(initialProgress);
       // Store both in output.data so if OutputPanel re-renders this component
       // from scratch the state is restored from initData.
-      setOutput("batch-progress", { ...res, batch_id: res.batch_id, progress: initialProgress }, `Batch #${res.batch_id}`);
-      addLog({ level: "success", message: `Batch #${res.batch_id} created — ${res.total_pdfs} PDFs queued` });
+      setOutput("batch-progress", { ...res, batch_id: res.batch_id, progress: initialProgress, source, date, style }, `Batch #${res.batch_id}`);
+      addLog({ level: "success", message: `Batch #${res.batch_id} created — ${totalItems} items queued` });
       setLoading(false);
     } catch (e) {
-      addLog({ level: "error", message: `Upload failed: ${e.response?.data?.detail || e.message}` });
+      const detail = e.response?.data?.detail || e.response?.data || e.message;
+      addLog({ level: "error", message: `Upload failed: ${typeof detail === "string" ? detail : JSON.stringify(detail)}` });
       setLoading(false);
     }
   };
@@ -78,9 +106,9 @@ export function UploadForm({ initData = {} }) {
       syncStore({ progress: p });
       addLog({ level: "success", message: `Batch #${msg.batch_id} complete — ${msg.report_count} reports saved` });
       if (msg.failed > 0)
-        addLog({ level: "warning", message: `${msg.failed} PDF(s) failed in Batch #${msg.batch_id}` });
-      const full = await fetchBatch(msg.batch_id);
-      setOutput("batch", full, `Batch #${msg.batch_id}`);
+        addLog({ level: "warning", message: `${msg.failed} files failed in Batch #${msg.batch_id}` });
+      const full = await serviceFetchBatch(msg.batch_id);
+      setOutput("batch", full, `Batch #${msg.batch_id}`, { source });
       setBatch(null);
     },
     onError: (msg) => {
@@ -93,7 +121,7 @@ export function UploadForm({ initData = {} }) {
   return (
     <div className="fade-up" style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "600px" }}>
       <h2 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 700, margin: 0, color: "var(--color-text)" }}>
-        Upload PDFs
+        {isImageUpload ? "Upload Images" : "Upload PDFs"}
       </h2>
 
       <div
@@ -108,15 +136,61 @@ export function UploadForm({ initData = {} }) {
           transition: "all 0.2s",
         }}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps({ webkitdirectory: isImageUpload, directory: isImageUpload })} />
         <div style={{ fontSize: "28px", marginBottom: "10px" }}>⬆</div>
         <div style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--color-muted)" }}>
-          {isDragActive ? "Drop PDFs here…" : "Drag & drop PDFs or click to select"}
+          {isDragActive
+            ? isImageUpload
+              ? "Drop images or image folders here…"
+              : "Drop PDFs here…"
+            : isImageUpload
+              ? "Drag & drop image files/folders or click to select"
+              : "Drag & drop PDFs or click to select"}
         </div>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", marginTop: "6px", opacity: 0.6 }}>
-          PDF only · 50 MB per file max
+          {isImageUpload ? "Images only · 50 MB per file max" : "PDF only · 50 MB per file max"}
         </div>
       </div>
+
+      {isImageUpload && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
+          <label style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)" }}>
+            Inspection date
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={{
+                marginTop: "6px",
+                width: "180px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                color: "var(--color-text)",
+              }}
+            />
+          </label>
+          <label style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)" }}>
+            Style name (optional)
+            <input
+              type="text"
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              placeholder="Enter style name"
+              style={{
+                marginTop: "6px",
+                width: "180px",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                color: "var(--color-text)",
+              }}
+            />
+          </label>
+        </div>
+      )}
 
       {files.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -545,9 +619,10 @@ const ghostBtn = {
 };
 
 // ── Batch detail ──────────────────────────────────────────────────────────────
-export function BatchDetail({ data }) {
+export function BatchDetail({ data, source = "puma" }) {
   const { addLog, setOutput } = useOutputStore();
   const [showRetryModal, setShowRetryModal] = useState(false);
+  const isImage = source === "image";
 
   const color         = STATUS_COLOR[data?.status] || "var(--color-muted)";
   const failedRecords = data?.failed_pdf_records || [];
@@ -557,11 +632,15 @@ export function BatchDetail({ data }) {
 
   const handleRetryConfirm = async (filenames) => {
     setShowRetryModal(false);
+    if (isImage) {
+      addLog({ level: "warning", message: "Retry is not supported for image batches." });
+      return;
+    }
     addLog({ level: "info", message: `Retrying ${filenames.length} PDF(s) in Batch #${data.id}…` });
     try {
-      const res = await retryBatch(data.id, filenames);
+      const res = await retryBatchPuma(data.id, filenames);
       addLog({ level: "success", message: `Retry started — ${res.files_retrying?.length} file(s)` });
-      const updated = await fetchBatch(data.id);
+      const updated = await fetchBatchPuma(data.id);
       setOutput("batch", updated, `Batch #${data.id}`);
     } catch (e) {
       addLog({ level: "error", message: `Retry failed: ${e.response?.data?.detail || e.message}` });
@@ -569,8 +648,12 @@ export function BatchDetail({ data }) {
   };
 
   const handleExcel = async () => {
+    if (isImage) {
+      addLog({ level: "warning", message: "Excel download is unavailable for image batches." });
+      return;
+    }
     try {
-      const blob = await downloadExcel(data.id);
+      const blob = await downloadExcelPuma(data.id);
       saveBlob(blob, `batch-${data.id}.xlsx`);
       addLog({ level: "success", message: `Excel downloaded for Batch #${data.id}` });
     } catch (e) {
@@ -656,7 +739,7 @@ export function BatchDetail({ data }) {
                 {/* FIX: use pdf_filename (stored by backend on InspectionReport) so the
                     downloaded .docx is named after the source PDF, e.g. ABC123.docx.
                     Falls back to style-id.docx if the field is absent. */}
-                <ReportCertBtn reportId={r.id} style={r.style} pdfFilename={r.pdf_filename} />
+                <ReportCertBtn reportId={r.id} style={r.style} pdfFilename={r.pdf_filename} source={source} />
               </div>
             ))}
           </div>
@@ -668,9 +751,12 @@ export function BatchDetail({ data }) {
 
 // ── Per-report certificate button ─────────────────────────────────────────────
 // FIX: accepts pdfFilename so the download is named after the original PDF.
-function ReportCertBtn({ reportId, style: styleName, pdfFilename }) {
+function ReportCertBtn({ reportId, style: styleName, pdfFilename, source = "puma" }) {
   const { addLog } = useOutputStore();
   const [busy, setBusy] = useState(false);
+  const isImage = source === "image";
+  const downloadReportPDF = isImage ? downloadReportPDFImage : downloadReportPDFPuma;
+  const downloadCertificate = isImage ? downloadReportDOCXImage : downloadCertificatePuma;
 
   const pdfName = pdfFilename || `${styleName}-${reportId}.pdf`;
   const docxName = pdfName.replace(/\.pdf$/i, ".docx");
@@ -678,7 +764,7 @@ function ReportCertBtn({ reportId, style: styleName, pdfFilename }) {
   const handleClick = async (e) => {
     e.stopPropagation();
     setBusy(true);
-    addLog({ level: "info", message: `Downloading PDF + certificate for ${styleName}…` });
+    addLog({ level: "info", message: `Downloading report assets for ${styleName}…` });
     try {
       const pdfBlob = await downloadReportPDF(reportId);
       saveBlob(pdfBlob, pdfName);
@@ -793,6 +879,12 @@ function Btn({ children, onClick, accent }) {
 // ── Router component ──────────────────────────────────────────────────────────
 export default function BatchOutput({ output }) {
   const { setOutput, setLoading, addLog } = useOutputStore();
+  const isImage = output?.source === "image";
+  const fetchBatch = isImage ? fetchBatchImage : fetchBatchPuma;
+  const fetchBatchLogs = isImage ? fetchBatchLogsImage : fetchBatchLogsPuma;
+  const downloadReportPDF = isImage ? downloadReportPDFImage : downloadReportPDFPuma;
+  const downloadCertificate = isImage ? downloadReportDOCXImage : downloadCertificatePuma;
+  const downloadExcel = isImage ? null : downloadExcelPuma;
 
   const handleAction = async (action, id, meta = {}) => {
     switch (action) {
@@ -833,6 +925,10 @@ export default function BatchOutput({ output }) {
         break;
 
       case "excel":
+        if (!downloadExcel) {
+          addLog({ level: "warning", message: "Excel download is unavailable for image batches." });
+          break;
+        }
         addLog({ level: "info", message: `Downloading Excel for Batch #${id}…` });
         try {
           const blob = await downloadExcel(id);
@@ -916,10 +1012,10 @@ export default function BatchOutput({ output }) {
   };
 
   if (output.type === "batch-list")     return <BatchList data={output.data} onAction={handleAction} />;
-  if (output.type === "batch")          return <BatchDetail data={output.data} />;
+  if (output.type === "batch")          return <BatchDetail data={output.data} source={output.source} />;
   if (output.type === "logs")           return <BatchLogsView data={output.data} />;
   // FIX: pass output.data as initData so UploadForm seeds batchId + progress
   // from the store instead of always starting from null.
-  if (output.type === "batch-progress") return <UploadForm initData={output.data ?? {}} />;
+  if (output.type === "batch-progress") return <UploadForm initData={output.data ?? {}} source={output.source} />;
   return null;
 }

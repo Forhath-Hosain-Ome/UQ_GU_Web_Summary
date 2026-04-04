@@ -29,7 +29,7 @@ const METHOD_COLORS = {
   POST: { bg: "rgba(99,102,241,0.12)", text: "var(--color-accent2)" },
 };
 
-export default function ApiMenu({ onSelect, activeId }) {
+export default function ApiMenu({ onSelect, activeId, sections = SECTIONS }) {
   const [collapsed, setCollapsed] = useState({});
 
   return (
@@ -54,7 +54,7 @@ export default function ApiMenu({ onSelect, activeId }) {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
-        {SECTIONS.map((section) => {
+        {sections.map((section) => {
           const isCollapsed = collapsed[section.label];
           return (
             <div key={section.label} style={{ marginBottom: "8px" }}>

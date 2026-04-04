@@ -1,10 +1,15 @@
 import { useOutputStore } from "../../store/outputStore";
 import {
-  downloadCertificate,
-  downloadReportPDF,
-  fetchReport,
+  downloadCertificate as downloadCertificatePuma,
+  downloadReportPDF as downloadReportPDFPuma,
+  fetchReport as fetchReportPuma,
   fetchCertificateLogs,
 } from "../../services/pumaApi";
+import {
+  fetchReport as fetchReportImage,
+  downloadReportPDF as downloadReportPDFImage,
+  downloadReportDOCX as downloadReportDOCXImage,
+} from "../../services/defectImageApi";
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -23,23 +28,23 @@ function saveBlob(blob, filename) {
  * swallowed the first click and only executed the second. Fix: stagger the
  * two saveBlob calls with a small setTimeout so each lives in its own task.
  */
-async function downloadBoth(report, addLog) {
+async function downloadBoth(report, downloadReportPDFFn, downloadCertificateFn, addLog) {
   addLog({ level: "info", message: `Downloading PDF + Certificate for ${report.style}…` });
 
   const pdfFilename = (
-    `Apparel Report_${report.style} ${report.factory_code}, ` +
+    `Apparel Report_${report.style} ${report.factory_code || ""}, ` +
     `Puma Warehouse WH AQL, PO ${report.po_numbers?.[0]?.number || ""}, ` +
-    `Customer ${report.final_customer}.pdf`
+    `Customer ${report.final_customer || ""}.pdf`
   );
   const docxFilename = (
     `${report.report_date || ""} ` +
-    `${report.style}(${report.po_numbers?.map((p) => p.number).join(",") || ""}) ` +
-    `${report.factory_name}.docx`
+    `${report.style || report.folder_name || "report"}(${report.po_numbers?.map((p) => p.number).join(",") || ""}) ` +
+    `${report.factory_name || ""}.docx`
   );
 
   const [pdfResult, certResult] = await Promise.allSettled([
-    downloadReportPDF(report.id),
-    downloadCertificate(report.id),
+    downloadReportPDFFn(report.id),
+    downloadCertificateFn(report.id),
   ]);
 
   // Trigger PDF download first …
@@ -240,6 +245,10 @@ function ReportDetail({ data }) {
 // ── Router ────────────────────────────────────────────────────────────────────
 export default function ReportOutput({ output }) {
   const { setOutput, setLoading, addLog } = useOutputStore();
+  const isImage = output?.source === "image";
+  const fetchReportFn = isImage ? fetchReportImage : fetchReportPuma;
+  const downloadReportPDFFn = isImage ? downloadReportPDFImage : downloadReportPDFPuma;
+  const downloadCertificateFn = isImage ? downloadReportDOCXImage : downloadCertificatePuma;
 
   // Row clicks always land here with action = "view" now.
   // The "certificate" case in the sidebar still works: PumaPage sets
@@ -250,9 +259,9 @@ export default function ReportOutput({ output }) {
       case "view":
         setLoading(true);
         try {
-          const data = await fetchReport(id);
-          setOutput("report", data, `Report · ${data.style}`);
-          addLog({ level: "info", message: `Loaded report ${data.style}` });
+          const data = await fetchReportFn(id);
+          setOutput("report", data, `Report · ${data.style || data.folder_name || id}`);
+          addLog({ level: "info", message: `Loaded report ${data.style || data.folder_name || id}` });
         } catch (e) {
           addLog({ level: "error", message: `Failed to load report #${id}` });
           setLoading(false);
@@ -264,8 +273,8 @@ export default function ReportOutput({ output }) {
         // (not from a row click anymore). Fetch the full report then download both.
         addLog({ level: "info", message: `Loading Report #${id}…` });
         try {
-          const data = await fetchReport(id);
-          await downloadBoth(data, addLog);
+          const data = await fetchReportFn(id);
+          await downloadBoth(data, downloadReportPDFFn, downloadCertificateFn, addLog);
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
         }

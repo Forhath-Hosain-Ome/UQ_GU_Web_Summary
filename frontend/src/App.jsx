@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./store/authStore";
 import LoginPage from "./pages/LoginPage";
 import PumaPage  from "./pages/PumaPage";
+import DefectImagePage from "./pages/DefectImagePage";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -24,6 +25,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <PumaPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/image"
+            element={
+              <RequireAuth>
+                <DefectImagePage />
               </RequireAuth>
             }
           />
