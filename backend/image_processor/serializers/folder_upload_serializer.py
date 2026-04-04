@@ -36,14 +36,30 @@ class FolderUploadSerializer(serializers.Serializer):
     # New field to capture the folder structure
     paths = serializers.ListField(
         child=serializers.CharField(max_length=1024),
-        allow_empty=False,
+        allow_empty=True,
+        required=False,
+        default=list,
         help_text="List of relative paths corresponding to each file."
+    )
+    # Optional style name for the batch
+    style = serializers.CharField(
+        max_length=255,
+        allow_blank=True,
+        required=False,
+        default="",
+        help_text="Custom style name for the uploaded batch"
     )
 
     def validate(self, data):
         files = data.get('files', [])
-        paths = data.get('paths', [])
+        paths = data.get('paths', []) or []
+        paths = [p.replace('\\', '/') for p in paths]
         errors = []
+
+        # If no paths were supplied, fall back to file names.
+        if files and not paths:
+            paths = [getattr(f, 'name', '') for f in files]
+            data['paths'] = paths
 
         # 1. Ensure parity between files and paths
         if len(files) != len(paths):

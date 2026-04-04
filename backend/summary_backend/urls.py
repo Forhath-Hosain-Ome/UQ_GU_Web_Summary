@@ -10,4 +10,5 @@ urlpatterns = [
 
     path("api/", include("puma_summary.urls", namespace="puma_summary")),
     path("image/", include("image_processor.urls", namespace="image_processor")),
+    path("api/final-summary/", include("final_summary.urls", namespace="final_summary")),
 ]

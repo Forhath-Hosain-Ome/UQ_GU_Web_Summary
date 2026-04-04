@@ -77,10 +77,22 @@ class FolderBatchListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_report_count(self, obj):
-        return obj.reports.count()
+        try:
+            return obj.reports.count()
+        except RuntimeError as e:
+            if "cannot schedule new futures after interpreter shutdown" in str(e):
+                return 0
+            else:
+                raise
 
     def get_failed_folder_count(self, obj):
-        return obj.batch_failed_folders.count()
+        try:
+            return obj.batch_failed_folders.count()
+        except RuntimeError as e:
+            if "cannot schedule new futures after interpreter shutdown" in str(e):
+                return 0
+            else:
+                raise
 
     def get_created_by(self, obj):
         user = obj.created_by

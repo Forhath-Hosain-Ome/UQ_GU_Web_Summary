@@ -53,6 +53,66 @@ from services.file_manager.copy_and_rename import copy_and_rename
 
 logger = logging.getLogger(__name__)
 
+
+def _get_channel_layer():
+    from channels.layers import get_channel_layer
+    return get_channel_layer()
+
+
+def _group_name(batch_id: int) -> str:
+    return f"batch_{batch_id}"
+
+
+def _push(group: str, message: dict):
+    try:
+        from asgiref.sync import async_to_sync
+        layer = _get_channel_layer()
+        async_to_sync(layer.group_send)(group, message)
+    except RuntimeError as e:
+        if "cannot schedule new futures after interpreter shutdown" in str(e):
+            logger.debug("Skipping channel push during shutdown: %s", e)
+        else:
+            logger.warning("Channel push failed: %s", e)
+
+
+def _push_progress(batch: FolderBatch, stage: str = ""):
+    _push(_group_name(batch.pk), {
+        "type":             "batch.progress",
+        "batch_id":         batch.pk,
+        "status":           batch.status,
+        "stage":            stage,
+        "progress_percent": batch.progress_percent,
+        "processed":        batch.processed_folders,
+        "total":            batch.total_folders,
+        "failed":           batch.failed_folders,
+        "success_rate":     batch.success_rate,
+    })
+
+
+def _push_complete(batch: FolderBatch):
+    _push(_group_name(batch.pk), {
+        "type":             "batch.complete",
+        "batch_id":         batch.pk,
+        "status":           batch.status,
+        "progress_percent": 100,
+        "processed":        batch.processed_folders,
+        "total":            batch.total_folders,
+        "failed":           batch.failed_folders,
+        "success_rate":     batch.success_rate,
+        "report_count":     batch.reports.count(),
+        "failed_details":   [],
+        "excel_available":  False,
+    })
+
+
+def _push_error(batch: FolderBatch, message: str):
+    _push(_group_name(batch.pk), {
+        "type":          "batch.error",
+        "batch_id":      batch.pk,
+        "status":        FolderBatch.Status.FAILED,
+        "error_message": message,
+    })
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 LABEL_TYPES = [
@@ -351,8 +411,8 @@ def _rmtree(path: Path) -> None:
 def process_defect_docx_task(
     self,
     batch_id: int,
-    folder_zip_paths: list[str],
-    date: str,
+    source_folder: str,
+    date: str = "",
     label_type: str = "Defect Picture",
     mode: str = "basic",
     label_style: Optional[dict] = None,
@@ -361,14 +421,14 @@ def process_defect_docx_task(
     template_path: Optional[str] = None,
 ) -> dict:
     """
-    Process one or more folder zips into DOCX defect-picture reports.
+    Process folders in source_folder into DOCX defect-picture reports.
 
     Parameters
     ----------
     batch_id : int
         FK to FolderBatch.
-    folder_zip_paths : list[str]
-        Absolute paths to zip files, each representing one image folder.
+    source_folder : str
+        Absolute path to directory containing image folders.
     date : str
         Date string from the frontend calendar (e.g. "2026-04-01").
     label_type : str
@@ -405,17 +465,16 @@ def process_defect_docx_task(
 
     batch.status = FolderBatch.Status.PROCESSING
     batch.save(update_fields=["status"])
+    _push_progress(batch, stage="PROCESSING")
 
-    output_base = Path(settings.BASE_DIR) / "media" / "output" / "defect_image"
-    output_base.mkdir(parents=True, exist_ok=True)
-
-    temp_dir = tempfile.mkdtemp()
+    # Find folders in source_folder
+    source_path = Path(source_folder)
+    folders = [f for f in source_path.iterdir() if f.is_dir()]
 
     try:
-        for zip_path in folder_zip_paths:
-            folder_name = Path(zip_path).stem
-            folder_extract_dir = Path(temp_dir) / folder_name
-            folder_extract_dir.mkdir(parents=True, exist_ok=True)
+        for folder_path in folders:
+            folder_name = folder_path.name
+            folder_extract_dir = folder_path
 
             # One output dir per folder, namespaced by batch to avoid collisions
             folder_output_dir = output_base / str(batch_id) / folder_name
@@ -428,10 +487,6 @@ def process_defect_docx_task(
             )
 
             try:
-                # ── Extract zip ───────────────────────────────────────────
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    zf.extractall(folder_extract_dir)
-
                 # ── Collect + sort images ─────────────────────────────────
                 raw_images = sorted([
                     str(p)
@@ -450,6 +505,7 @@ def process_defect_docx_task(
                     )
                     batch.failed_folders += 1
                     batch.save(update_fields=["failed_folders"])
+                    _push_progress(batch, stage="PROCESSING")
                     continue
 
                 # ── Prepare (convert + resize) images ─────────────────────
@@ -476,6 +532,7 @@ def process_defect_docx_task(
                     )
                     batch.failed_folders += 1
                     batch.save(update_fields=["failed_folders"])
+                    _push_progress(batch, stage="PROCESSING")
                     continue
 
                 # ── Build translations if needed ──────────────────────────
@@ -519,6 +576,7 @@ def process_defect_docx_task(
 
                 batch.processed_folders += 1
                 batch.save(update_fields=["processed_folders"])
+                _push_progress(batch, stage="PROCESSING")
 
                 logger.info(
                     "Folder '%s' done — %d image(s) | mode=%s | batch #%s",
@@ -550,6 +608,7 @@ def process_defect_docx_task(
         else:
             batch.status = FolderBatch.Status.PARTIAL
         batch.save(update_fields=["status"])
+        _push_complete(batch)
 
         logger.info(
             "Batch #%s complete — processed: %d, failed: %d",
@@ -568,10 +627,11 @@ def process_defect_docx_task(
             batch.status    = FolderBatch.Status.FAILED
             batch.error_log = str(exc)
             batch.save(update_fields=["status", "error_log"])
+            _push_error(batch, str(exc))
         except Exception:
             pass
         raise self.retry(exc=exc, countdown=60)
 
     finally:
-        # Clean up temp dir using Path.unlink/rmdir — no shutil
-        _rmtree(Path(temp_dir))
+        # Clean up source dir using Path.unlink/rmdir — no shutil
+        _rmtree(Path(source_folder))

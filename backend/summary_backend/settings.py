@@ -1,8 +1,13 @@
 from pathlib import Path
 from datetime import timedelta
 import os
+import sys
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Allow importing the top-level workspace `analysis` package from backend code.
+WORKSPACE_ROOT = BASE_DIR.parent
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 
 
 # Quick-start development settings - unsuitable for production
@@ -38,7 +43,8 @@ INSTALLED_APPS = [
     'rest_framework',
 
     'puma_summary.apps.PumaSummaryConfig',
-    'image_processor.apps.ImageProcessorConfig'
+    'image_processor.apps.ImageProcessorConfig',
+    'final_summary.apps.FinalSummaryConfig',
 ]
 
 MIDDLEWARE = [

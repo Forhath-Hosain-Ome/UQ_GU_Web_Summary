@@ -252,7 +252,7 @@ def process_inspection_batch(self, batch_id: int) -> dict:
         # was called with `folder` (the uploads dir) as output_dir, which means
         # the renamed file was written alongside the originals and never reached
         # media/output/puma/renamed_pdfs/{batch_id}/.
-        renamed_pdf_dir = puma["OUTPUT_DIR"] / "renamed_pdfs" / str(batch.pk)
+        renamed_pdf_dir = puma["OUTPUT_DIR"]/ "Puma" / "renamed_pdfs" / str(batch.pk)
         renamed_pdf_dir.mkdir(parents=True, exist_ok=True)
 
         saved_reports = []

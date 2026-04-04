@@ -41,7 +41,7 @@ class BatchUploadView(APIView):
         files = serializer.validated_data["files"]
 
         puma        = getattr(settings, "PUMA_SETTINGS", {})
-        upload_root = Path(puma.get("UPLOAD_DIR", settings.BASE_DIR / "media" / "uploads"))
+        upload_root = Path(puma.get("UPLOAD_DIR", settings.BASE_DIR / "media" / "uploads" / "Puma"))
         upload_root.mkdir(parents=True, exist_ok=True)
 
         # Record the uploading user on the batch row
@@ -50,7 +50,7 @@ class BatchUploadView(APIView):
             created_by=request.user,
         )
 
-        batch_folder = upload_root / str(batch.pk)
+        batch_folder = upload_root / str(batch.created_at)
         batch_folder.mkdir(parents=True, exist_ok=True)
 
         # Save uploaded files, handling duplicate filenames

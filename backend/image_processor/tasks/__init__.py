@@ -1,1 +1,1 @@
-from .process_image import process_inspection_batch, retry_failed_pdfs, process_folder_task
+from .process_image import process_defect_docx_task as process_folder_task
