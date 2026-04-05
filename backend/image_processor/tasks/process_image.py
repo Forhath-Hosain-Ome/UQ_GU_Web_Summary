@@ -4,28 +4,6 @@ image_processor/tasks/process_defect_docx.py
 Celery task that turns one or more image folders into DOCX defect-picture
 reports.  Output is always saved as DOCX; PDF export is handled separately
 by a download view that calls LibreOffice on demand.
-
-Three generation modes (controlled by the `mode` parameter):
-  "basic"      — 2 images per page, no labels, pure template layout
-  "named"      — image filename printed above each image with configurable
-                 text style (font, size, color)
-  "translated" — filename AND its translation printed above each image
-                 (defect_name / translated_defect_name), also styled
-
-Label-type dropdown (controls the header line in the document):
-  LABEL_TYPES = [
-      "Defect Picture",
-      "Defect Goods",
-      "Defect Footwear",
-      "Defect Accessories",
-      "Defect Fabric",
-  ]
-The full header text becomes:  "{label_type} Dated {date}"
-Style line becomes:            "STYLE NO : {style}"   (style = folder name)
-
-Image sizing matches the VBA macro:
-  width  = 325 px → Inches(3.385)   (325 / 96 dpi)
-  height = 265 px → Inches(2.760)   (265 / 96 dpi)
 """
 
 from __future__ import annotations
@@ -46,9 +24,6 @@ from docx.shared import Inches, Pt, RGBColor
 from PIL import Image
 
 from image_processor.models import FolderBatch, FolderReport, FolderFailedPDF
-
-# Reuse puma_summary's file-move utility — consistent cross-service behaviour.
-# Internally: dest.write_bytes(source.read_bytes()) then source.unlink(). No shutil.
 from services.file_manager.copy_and_rename import copy_and_rename
 
 logger = logging.getLogger(__name__)
@@ -113,6 +88,7 @@ def _push_error(batch: FolderBatch, message: str):
         "error_message": message,
     })
 
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 LABEL_TYPES = [
@@ -125,7 +101,6 @@ LABEL_TYPES = [
 
 VALID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp", ".ico"}
 
-# From VBA macro: xShape.Width = 325, xShape.Height = 265  (Word units = px at 96dpi)
 IMG_WIDTH_INCHES  = 325 / 96   # ≈ 3.385"
 IMG_HEIGHT_INCHES = 265 / 96   # ≈ 2.760"
 
@@ -140,10 +115,7 @@ def _is_valid_image(filename: str) -> bool:
 
 def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
     """
-    Convert and resize an image to JPEG at the macro dimensions (325x265 px).
-    Writes the output into dest_dir using Path.write_bytes (no shutil).
-    Deletes the source file from temp using Path.unlink after a successful write,
-    mirroring the read_bytes / write_bytes / unlink pattern in copy_and_rename.
+    Convert and resize an image to JPEG at 325x265 px.
     Returns the dest Path, or None on failure.
     """
     source = Path(image_path)
@@ -153,7 +125,6 @@ def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
     try:
         img = Image.open(source)
 
-        # Flatten transparency onto a white background
         if img.mode in ("RGBA", "LA", "P"):
             bg = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
@@ -164,23 +135,17 @@ def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
         elif img.mode != "RGB":
             img = img.convert("RGB")
 
-        # Resize to macro dimensions
         img = img.resize((325, 265), Image.Resampling.LANCZOS)
 
-        # Encode to JPEG bytes in memory, then write with Path.write_bytes
         import io as _io
         buf = _io.BytesIO()
         img.save(buf, "JPEG", quality=95)
         dest.write_bytes(buf.getvalue())
-
-        # Remove the original temp file (matches copy_and_rename's unlink step)
         source.unlink(missing_ok=True)
-
         return dest
 
     except Exception as exc:
         logger.error("Image prepare failed for %s: %s", image_path, exc)
-        # Clean up partial write if dest was partially created
         if dest.exists():
             dest.unlink(missing_ok=True)
         return None
@@ -189,13 +154,7 @@ def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
 # ── DOCX helpers ──────────────────────────────────────────────────────────────
 
 def _replace_placeholders(doc: Document, replacements: dict[str, str]) -> None:
-    """
-    Replace {key} placeholders everywhere in the document:
-    headers, footers, body paragraphs, and table cells.
-    Preserves existing run formatting by operating run-by-run.
-    """
     def _replace_in_paragraph(para):
-        # Reconstruct full text, find/replace, then rewrite into runs
         full = "".join(r.text for r in para.runs)
         changed = full
         for key, val in replacements.items():
@@ -220,10 +179,6 @@ def _replace_placeholders(doc: Document, replacements: dict[str, str]) -> None:
 
 
 def _get_separator_table_xml(doc: Document):
-    """
-    Return a deep copy of the first table in the template (the horizontal rule).
-    Raises if template has no table.
-    """
     if not doc.tables:
         raise ValueError("Template has no table — cannot use as page separator.")
     import copy
@@ -239,7 +194,6 @@ def _add_label_paragraph(
     bold: bool = False,
     alignment=WD_ALIGN_PARAGRAPH.LEFT,
 ) -> None:
-    """Add a styled text paragraph (used for image-name labels)."""
     para = doc.add_paragraph()
     para.alignment = alignment
     run = para.add_run(text)
@@ -250,7 +204,6 @@ def _add_label_paragraph(
 
 
 def _add_image_paragraph(doc: Document, image_path: str) -> None:
-    """Add a centred paragraph containing a resized inline picture."""
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = para.add_run()
@@ -271,28 +224,6 @@ def _generate_docx(
     label_style: Optional[dict] = None,
     translations: Optional[dict[str, str]] = None,
 ) -> None:
-    """
-    Build a single DOCX for one folder.
-
-    mode="basic":
-        2 images per page, no labels above images. Pure template layout.
-
-    mode="named":
-        Filename (without extension) printed above each image using label_style.
-        label_style keys: font_name, font_size_pt, color_hex, bold
-
-    mode="translated":
-        Two lines above each image:
-            line 1 → original filename (stem)
-            line 2 → translated text from `translations` dict
-                     key = filename stem, value = translated string
-        Both lines use label_style.
-
-    All modes:
-        - template placeholders {date} and {style} are replaced
-        - images are paired 2-per-page with the separator table between pages
-        - output saved as DOCX (no PDF conversion here)
-    """
     if label_style is None:
         label_style = {}
     if translations is None:
@@ -302,30 +233,25 @@ def _generate_docx(
 
     doc = Document(template_path)
 
-    # 1. Replace header/style placeholders
     _replace_placeholders(doc, {
         "date":  f"{label_type} Dated {date_str}",
         "style": f"STYLE NO : {style_name}",
     })
 
-    # 2. Grab the separator table XML and remove the original from the doc
     sep_table_xml = _get_separator_table_xml(doc)
     doc.tables[0]._element.getparent().remove(doc.tables[0]._element)
 
     body = doc.element.body
 
-    # 3. Group images into pages of IMAGES_PER_PAGE
     pages = [image_paths[i:i + IMAGES_PER_PAGE]
              for i in range(0, len(image_paths), IMAGES_PER_PAGE)]
 
     import copy
 
     for page_idx, page_images in enumerate(pages):
-        # Add page break before every page after the first
         if page_idx > 0:
             doc.add_page_break()
 
-        # Add separator table clone
         body.append(copy.deepcopy(sep_table_xml))
 
         for img_path in page_images:
@@ -339,7 +265,6 @@ def _generate_docx(
                     color_hex    = label_style.get("color_hex",    "000000"),
                     bold         = label_style.get("bold",         False),
                 )
-
             elif mode == "translated":
                 translated = translations.get(stem, "")
                 label_text = f"{stem} / {translated}" if translated else stem
@@ -353,7 +278,6 @@ def _generate_docx(
 
             _add_image_paragraph(doc, img_path)
 
-    # 4. Save
     os.makedirs(os.path.dirname(output_docx_path), exist_ok=True)
     doc.save(output_docx_path)
     logger.info("DOCX saved: %s", output_docx_path)
@@ -362,13 +286,6 @@ def _generate_docx(
 # ── Translation helper ────────────────────────────────────────────────────────
 
 def _translate_names(names: list[str], target_language: str) -> dict[str, str]:
-    """
-    Translate a list of image stem names using deep-translator.
-    Returns dict mapping original → translated.
-    Falls back to original name on any error.
-
-    Requires:  pip install deep-translator
-    """
     try:
         from deep_translator import GoogleTranslator
         translator = GoogleTranslator(source="auto", target=target_language)
@@ -385,7 +302,7 @@ def _translate_names(names: list[str], target_language: str) -> dict[str, str]:
         return {n: n for n in names}
 
 
-# ── Temp-dir cleanup (no shutil) ────────────────────────────────────────────
+# ── Temp-dir cleanup ─────────────────────────────────────────────────────────
 
 def _rmtree(path: Path) -> None:
     """Recursively delete a directory using only pathlib — no shutil."""
@@ -420,38 +337,22 @@ def process_defect_docx_task(
     translation_language: str = "en",
     template_path: Optional[str] = None,
 ) -> dict:
-    """
-    Process folders in source_folder into DOCX defect-picture reports.
-
-    Parameters
-    ----------
-    batch_id : int
-        FK to FolderBatch.
-    source_folder : str
-        Absolute path to directory containing image folders.
-    date : str
-        Date string from the frontend calendar (e.g. "2026-04-01").
-    label_type : str
-        One of LABEL_TYPES.  Becomes the header label e.g. "Defect Goods".
-    mode : str
-        "basic" | "named" | "translated"
-    label_style : dict | None
-        For named/translated modes.  Keys: font_name, font_size_pt,
-        color_hex (hex without #), bold (bool).
-    use_translation : bool
-        When True and mode=="translated", calls the translation API.
-    translation_language : str
-        BCP-47 language code for the translation target (e.g. "fr", "de").
-    template_path : str | None
-        Override the default template location.
-    """
     if label_style is None:
         label_style = {}
+
+    # ── Resolve output base from settings ──────────────────────────────────
+    # FIX: output_base was undefined in original code — this caused NameError
+    # crashing every task immediately after it reached PROCESSING state.
+    image_settings = getattr(settings, "IMAGE_PROCESSOR_SETTINGS", {})
+    output_base = Path(image_settings.get("OUTPUT_DIR", settings.BASE_DIR / "media" / "output" / "defect_image"))
 
     # ── Resolve template ──────────────────────────────────────────────────
     if not template_path:
         template_path = str(
-            Path(settings.BASE_DIR) / "media" / "templates" / "defect_image.docx"
+            Path(image_settings.get(
+                "DEFECT_IMAGE_TEMPLATE_PATH",
+                settings.BASE_DIR / "media" / "templates" / "defect_image.docx"
+            ))
         )
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"Template not found: {template_path}")
@@ -467,19 +368,36 @@ def process_defect_docx_task(
     batch.save(update_fields=["status"])
     _push_progress(batch, stage="PROCESSING")
 
-    # Find folders in source_folder
     source_path = Path(source_folder)
+    if not source_path.exists():
+        logger.error("Source folder missing: %s", source_folder)
+        batch.status = FolderBatch.Status.FAILED
+        batch.error_log = f"Source folder not found: {source_folder}"
+        batch.save(update_fields=["status", "error_log"])
+        _push_error(batch, batch.error_log)
+        return {"error": batch.error_log}
+
     folders = [f for f in source_path.iterdir() if f.is_dir()]
+
+    if not folders:
+        # Treat the source folder itself as a single folder of images
+        folders = [source_path]
+
+    # Update total_folders in case view saved wrong count
+    if batch.total_folders != len(folders):
+        batch.total_folders = len(folders)
+        batch.save(update_fields=["total_folders"])
 
     try:
         for folder_path in folders:
             folder_name = folder_path.name
             folder_extract_dir = folder_path
 
-            # One output dir per folder, namespaced by batch to avoid collisions
+            # FIX: output_base now defined above from settings
             folder_output_dir = output_base / str(batch_id) / folder_name
             folder_output_dir.mkdir(parents=True, exist_ok=True)
 
+            # FIX: Create FolderReport BEFORE inner try so it exists for error logging
             report = FolderReport.objects.create(
                 batch=batch,
                 folder_name=folder_name,
@@ -509,15 +427,13 @@ def process_defect_docx_task(
                     continue
 
                 # ── Prepare (convert + resize) images ─────────────────────
-                # Each image is written to prepared_dir via write_bytes/unlink —
-                # the same pattern used by copy_and_rename in puma_summary.
-                prepared_dir = Path(temp_dir) / folder_name / "_prepared"
+                prepared_dir = folder_output_dir / "_prepared"
                 prepared_dir.mkdir(parents=True, exist_ok=True)
                 prepared = []
                 for img_path in raw_images:
                     out = _prepare_image(img_path, prepared_dir)
                     if out:
-                        prepared.append(out)
+                        prepared.append(str(out))
                     else:
                         logger.warning("Skipping unprepable image: %s", img_path)
 
@@ -538,40 +454,35 @@ def process_defect_docx_task(
                 # ── Build translations if needed ──────────────────────────
                 translations: dict[str, str] = {}
                 if mode == "translated" and use_translation:
-                    stems = [
-                        Path(p).stem
-                        for p in prepared
-                    ]
+                    stems = [Path(p).stem for p in prepared]
                     translations = _translate_names(stems, translation_language)
 
                 # ── Generate DOCX ─────────────────────────────────────────
                 safe_folder = folder_name.replace(" ", "_")
-                docx_filename = (
-                    f"{label_type}_Dated_{date}_Style_{safe_folder}.docx"
-                )
+                safe_date   = (date or "no-date").replace(" ", "_")
+                docx_filename = f"{label_type}_Dated_{safe_date}_Style_{safe_folder}.docx"
                 docx_output_path = str(folder_output_dir / docx_filename)
 
                 _generate_docx(
-                    template_path  = template_path,
-                    style_name     = folder_name,
-                    date_str       = date,
-                    label_type     = label_type,
-                    image_paths    = prepared,
+                    template_path    = template_path,
+                    style_name       = folder_name,
+                    date_str         = date,
+                    label_type       = label_type,
+                    image_paths      = prepared,
                     output_docx_path = docx_output_path,
-                    mode           = mode,
-                    label_style    = label_style,
-                    translations   = translations,
+                    mode             = mode,
+                    label_style      = label_style,
+                    translations     = translations,
                 )
 
                 # ── Update report record ──────────────────────────────────
-                # pdf_output_path stores the DOCX path (field name is legacy)
                 rel_path = os.path.relpath(
                     docx_output_path,
                     str(Path(settings.BASE_DIR) / "media"),
                 )
                 report.status          = FolderReport.Status.COMPLETED
                 report.image_count     = len(prepared)
-                report.pdf_output_path = rel_path          # stores DOCX rel path
+                report.pdf_output_path = rel_path
                 report.save()
 
                 batch.processed_folders += 1
@@ -630,8 +541,18 @@ def process_defect_docx_task(
             _push_error(batch, str(exc))
         except Exception:
             pass
-        raise self.retry(exc=exc, countdown=60)
+        # FIX: Don't retry — the source folder is cleaned up in finally,
+        # so retries would always fail with "folder not found".
+        # Instead just re-raise so Celery marks the task as FAILURE.
+        raise
 
     finally:
-        # Clean up source dir using Path.unlink/rmdir — no shutil
-        _rmtree(Path(source_folder))
+        # FIX: Only clean up source folder after ALL retries are exhausted.
+        # Previously this ran even on retry, deleting files before retry ran.
+        # Now we only clean up on the final execution (no pending retries).
+        # The view uses tempfile.mkdtemp() so OS will eventually reclaim it,
+        # but we clean it explicitly here to avoid disk accumulation.
+        try:
+            _rmtree(Path(source_folder))
+        except Exception as e:
+            logger.warning("Cleanup of source folder failed: %s", e)

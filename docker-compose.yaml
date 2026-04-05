@@ -54,7 +54,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A summary_backend worker -l info -Q puma_summary
+    command: celery -A summary_backend worker -l info -Q puma_summary,celery
     networks:
       - app_network
     restart: always

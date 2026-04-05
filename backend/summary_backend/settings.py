@@ -220,6 +220,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Templates files
+
+TEMPLATE_URL = "/media/templates/"
+TEMPLATE_ROOT = MEDIA_ROOT / "templates"
+
 # Log files
 
 LOG_DIR = BASE_DIR / "logs"
@@ -253,14 +258,14 @@ LOGGING = {
 }
 
 PUMA_SETTINGS = {
-    "CERTIFICATE_TEMPLATE_PATH": BASE_DIR / "media/templates/CERTIFICATE.docx",
+    "CERTIFICATE_TEMPLATE_PATH": TEMPLATE_ROOT / "CERTIFICATE.docx",
     "OUTPUT_DIR":        BASE_DIR / "media/output/puma",
     "RENAMED_PDF_DIR":   BASE_DIR / "media/output/puma/renamed_pdfs",
     "CERTIFICATE_DIR":   BASE_DIR / "media/output/puma/certificates",
 }
 
 IMAGE_PROCESSOR_SETTINGS = {
-    "DEFECT_IMAGE_TEMPLATE_PATH": BASE_DIR / "media/templates/Defec_pictures.docx",
+    "DEFECT_IMAGE_TEMPLATE_PATH": TEMPLATE_ROOT / "Defec_pictures.docx",
     "OUTPUT_DIR" :        BASE_DIR / "media/output/defect_image",
     "DEFECT_PDF" :        BASE_DIR / "media/output/defect_image/renamed_pdfs",
     "DEFECT_DOCX":        BASE_DIR / "media/output/defect_image/defect_docx",
@@ -277,4 +282,5 @@ CELERY_TASK_DEFAULT_QUEUE = 'celery'
 CELERY_TASK_ROUTES = {
     'puma_summary.process_inspection_batch': {'queue': 'celery'},
     'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
+    'image_processor.process_defect_docx':   {'queue': 'celery'},
 }
