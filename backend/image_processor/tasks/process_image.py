@@ -185,6 +185,34 @@ def _get_separator_table_xml(doc: Document):
     return copy.deepcopy(doc.tables[0]._element)
 
 
+def _set_table_top_border(table_elem, thickness: int = 4):
+    """Add a thick top border to all cells in the first row of the table."""
+    try:
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+    except ImportError:
+        return table_elem
+
+    try:
+        table = table_elem
+        if hasattr(table, 'rows') and table.rows:
+            first_row = table.rows[0]
+            for cell in first_row.cells:
+                tc = cell._element
+                tcPr = tc.get_or_add_tcPr()
+                tcBdr = OxmlElement('w:tcBdr')
+                top = OxmlElement('w:top')
+                top.set(qn('w:val'), 'single')
+                top.set(qn('w:sz'), str(thickness * 20))
+                top.set(qn('w:color'), '000000')
+                tcBdr.append(top)
+                tcPr.append(tcBdr)
+    except Exception as e:
+        logger.warning("Failed to set table top border: %s", e)
+
+    return table_elem
+
+
 def _add_label_paragraph(
     doc: Document,
     text: str,
@@ -203,11 +231,58 @@ def _add_label_paragraph(
     run.font.color.rgb = RGBColor.from_string(color_hex)
 
 
+def _add_page_break(doc: Document) -> None:
+    para = doc.add_paragraph()
+    para._element.add_br(type=6)
+
+
 def _add_image_paragraph(doc: Document, image_path: str) -> None:
     para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = para.add_run()
     run.add_picture(image_path, width=Inches(IMG_WIDTH_INCHES))
+
+
+def _add_style_table(doc: Document, style_text: str) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    table = doc.add_table(rows=1, cols=1)
+
+    cell = table.rows[0].cells[0]
+    cell.text = style_text
+
+    cell_para = cell.paragraphs[0]
+    cell_para.runs[0].font.name = "Verdana"
+    cell_para.runs[0].font.size = Pt(14)
+    cell_para.runs[0].font.bold = True
+
+    tc = cell._element
+    tcPr = tc.get_or_add_tcPr()
+    tcBdr = OxmlElement("w:tcBdr")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "single")
+    top.set(qn("w:sz"), "24")
+    top.set(qn("w:color"), "000000")
+    top.set(qn("w:space"), "0")
+    tcBdr.append(top)
+    tcPr.append(tcBdr)
+
+
+def _set_cell_top_border(cell, thickness: int = 3) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tc = cell._element
+    tcPr = tc.get_or_add_tcPr()
+    tcBdr = OxmlElement("w:tcBdr")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "single")
+    top.set(qn("w:sz"), str(thickness * 8))
+    top.set(qn("w:color"), "000000")
+    top.set(qn("w:space"), "0")
+    tcBdr.append(top)
+    tcPr.append(tcBdr)
 
 
 # ── Per-folder DOCX generation ────────────────────────────────────────────────
@@ -238,21 +313,26 @@ def _generate_docx(
         "style": f"STYLE NO : {style_name}",
     })
 
-    sep_table_xml = _get_separator_table_xml(doc)
+    sep_table = doc.tables[0]
+    _copy_sep_table = sep_table
     doc.tables[0]._element.getparent().remove(doc.tables[0]._element)
-
-    body = doc.element.body
 
     pages = [image_paths[i:i + IMAGES_PER_PAGE]
              for i in range(0, len(image_paths), IMAGES_PER_PAGE)]
-
-    import copy
 
     for page_idx, page_images in enumerate(pages):
         if page_idx > 0:
             doc.add_page_break()
 
-        body.append(copy.deepcopy(sep_table_xml))
+        new_sep = doc.add_table(rows=len(_copy_sep_table.rows), cols=len(_copy_sep_table.columns))
+        for i, row in enumerate(_copy_sep_table.rows):
+            for j, cell in enumerate(row.cells):
+                new_sep.rows[i].cells[j].text = cell.text
+        for i, row in enumerate(new_sep.rows):
+            for cell in row.cells:
+                _set_cell_top_border(cell, thickness=3)
+
+        _add_style_table(doc, f"STYLE NO : {style_name}")
 
         for img_path in page_images:
             stem = Path(img_path).stem
@@ -330,7 +410,7 @@ def process_defect_docx_task(
     batch_id: int,
     source_folder: str,
     date: str = "",
-    label_type: str = "Defect Picture",
+    label_type: str = "Defect_GMTS_pictures_report_for_Style",
     mode: str = "basic",
     label_style: Optional[dict] = None,
     use_translation: bool = False,
@@ -460,7 +540,7 @@ def process_defect_docx_task(
                 # ── Generate DOCX ─────────────────────────────────────────
                 safe_folder = folder_name.replace(" ", "_")
                 safe_date   = (date or "no-date").replace(" ", "_")
-                docx_filename = f"{label_type}_Dated_{safe_date}_Style_{safe_folder}.docx"
+                docx_filename = f"{label_type}_{safe_folder}_dated at{safe_date}.docx"
                 docx_output_path = str(folder_output_dir / docx_filename)
 
                 _generate_docx(

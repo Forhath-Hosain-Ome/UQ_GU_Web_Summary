@@ -1,7 +1,9 @@
 import logging
 import os
-import tempfile
-from django.core.files.storage import FileSystemStorage
+import uuid
+from pathlib import Path
+
+from django.conf import settings
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
@@ -60,7 +62,10 @@ class FolderUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        temp_dir = tempfile.mkdtemp()
+        media_root = Path(settings.MEDIA_ROOT)
+        upload_base = media_root / "uploads" / "batch_uploads"
+        upload_base.mkdir(parents=True, exist_ok=True)
+        temp_dir = str(upload_base / str(uuid.uuid4()))
 
         try:
             # ── Save files preserving folder structure ────────────────────
