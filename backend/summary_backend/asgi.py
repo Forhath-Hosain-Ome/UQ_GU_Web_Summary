@@ -23,26 +23,7 @@ from channels.security.websocket import AllowedHostsOriginValidator
 from puma_summary.middleware import JWTAuthMiddleware
 from puma_summary.routing import websocket_urlpatterns
 
-# application = ProtocolTypeRouter(
-#     {
-#         # Use the variable we defined in step 2
-#         "http": django_asgi_app,
 
-#         "websocket": AllowedHostsOriginValidator(
-#             JWTAuthMiddleware(
-#                 URLRouter(websocket_urlpatterns)
-#             )
-#         ),
-#     }
-# )
-
-# FIX: Removed AllowedHostsOriginValidator.
-# It checks the Origin header against ALLOWED_HOSTS, but the Vite dev server
-# sends Origin: http://localhost:5173 — the port suffix means it never matches
-# plain "localhost" in ALLOWED_HOSTS, so every WS connection was rejected
-# immediately after the handshake (the CONNECT → DISCONNECT you saw).
-# JWTAuthMiddleware already rejects unauthenticated connections (close 4401),
-# so AllowedHostsOriginValidator adds no real security here.
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,

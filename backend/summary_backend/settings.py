@@ -228,6 +228,7 @@ TEMPLATE_ROOT = MEDIA_ROOT / "templates"
 # Log files
 
 LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)  
 LOG_FILE = LOG_DIR / "app.log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -283,4 +284,5 @@ CELERY_TASK_ROUTES = {
     'puma_summary.process_inspection_batch': {'queue': 'celery'},
     'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
     'image_processor.process_defect_docx':   {'queue': 'celery'},
+    'final_summary.process_audit_upload':    {'queue': 'celery'},
 }

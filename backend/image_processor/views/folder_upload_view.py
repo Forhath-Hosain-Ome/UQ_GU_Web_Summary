@@ -9,6 +9,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
 
 from image_processor.serializers import FolderUploadSerializer
 from image_processor.models import FolderBatch
@@ -111,17 +112,22 @@ class FolderUploadView(APIView):
             )
 
             # ── Fire Celery task ──────────────────────────────────────────
-            task = process_folder_task.delay(batch.id, temp_dir, date)
+            
+            task_id = None
 
-            # FIX: Save celery_task_id so it's visible in admin / API
-            # (previously this was in dead code after an early return)
-            batch.celery_task_id = task.id
-            batch.save(update_fields=["celery_task_id"])
+            def on_commit_callback():
+                nonlocal task_id
+                result = process_folder_task.delay(batch.id, temp_dir, date)
+                batch.celery_task_id = result.id
+                batch.save(update_fields=["celery_task_id"])
+                logger.info(
+                    "Folder upload | batch #%s | user: %s | folders: %s | task: %s",
+                    batch.id, request.user.username, folders, result.id,
+                )
 
-            logger.info(
-                "Folder upload | batch #%s | user: %s | folders: %s | task: %s",
-                batch.id, request.user.username, folders, task.id,
-            )
+            transaction.on_commit(on_commit_callback)
+
+           
 
             return Response(
                 {

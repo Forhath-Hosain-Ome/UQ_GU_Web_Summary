@@ -2,8 +2,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    ports:
-      - "6379:6379"
+    # Don't expose Redis port publicly in production
+    # ports: - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -13,18 +13,23 @@ services:
       retries: 5
     networks:
       - app_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: backend
-    ports:
-      - "8000:8000"
+    # No port exposure — Nginx proxies to it
     volumes:
-      - ./backend:/app
-      - ./backend/media:/app/media
-      - ./backend/logs:/app/logs
+      - ./backend/media:/app/media   # persist uploads
+      - ./backend/logs:/app/logs     # persist logs
+    env_file:
+      - .env                         # secrets stay out of compose file
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
       - REDIS_HOST=redis
@@ -33,9 +38,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: python manage.py runserver 0.0.0.0:8000
     networks:
       - app_network
+    command: daphne -b 0.0.0.0 -p 8000 summary_backend.asgi:application
+    restart: unless-stopped
 
   celery-worker:
     build:
@@ -43,9 +49,10 @@ services:
       dockerfile: Dockerfile
     container_name: celery-worker
     volumes:
-      - ./backend:/app
       - ./backend/media:/app/media
       - ./backend/logs:/app/logs
+    env_file:
+      - .env
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
       - REDIS_HOST=redis
@@ -54,10 +61,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A summary_backend worker -l info -Q puma_summary,celery
+    command: celery -A summary_backend worker -l info -Q puma_summary,celery --concurrency=4
     networks:
       - app_network
-    restart: always
+    restart: unless-stopped
 
   celery-beat:
     build:
@@ -65,9 +72,9 @@ services:
       dockerfile: Dockerfile
     container_name: celery-beat
     volumes:
-      - ./backend:/app
-      - ./backend/media:/app/media
       - ./backend/logs:/app/logs
+    env_file:
+      - .env
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
       - REDIS_HOST=redis
@@ -79,7 +86,7 @@ services:
     command: celery -A summary_backend beat -l info
     networks:
       - app_network
-    restart: always
+    restart: unless-stopped
 
   frontend:
     build:
@@ -87,18 +94,13 @@ services:
       dockerfile: Dockerfile
     container_name: frontend
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=/api
-      - VITE_WS_URL=/ws
+      - "80:80"       # Nginx now listens on 80, not 5173
     depends_on:
       - backend
     networks:
       - app_network
-      
+    restart: unless-stopped
+
 volumes:
   redis_data:
 
