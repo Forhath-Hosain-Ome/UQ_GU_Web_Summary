@@ -177,40 +177,82 @@ def _replace_placeholders(doc: Document, replacements: dict[str, str]) -> None:
         _replace_in_container(section.header)
         _replace_in_container(section.footer)
 
-
-def _get_separator_table_xml(doc: Document):
-    if not doc.tables:
-        raise ValueError("Template has no table — cannot use as page separator.")
-    import copy
-    return copy.deepcopy(doc.tables[0]._element)
+    # for key in replacements:
+    #     _remove_empty_paragraphs_after_placeholder(doc, "{" + key + "}")
 
 
-def _set_table_top_border(table_elem, thickness: int = 4):
-    """Add a thick top border to all cells in the first row of the table."""
-    try:
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
-    except ImportError:
-        return table_elem
+def _remove_empty_paragraphs_after_placeholder(doc: Document, placeholder: str) -> None:
+    """Remove empty paragraphs that follow a specific placeholder."""
+    def is_empty_paragraph(para):
+        text = "".join(r.text for r in para.runs).strip()
+        return not text
 
-    try:
-        table = table_elem
-        if hasattr(table, 'rows') and table.rows:
-            first_row = table.rows[0]
-            for cell in first_row.cells:
-                tc = cell._element
-                tcPr = tc.get_or_add_tcPr()
-                tcBdr = OxmlElement('w:tcBdr')
-                top = OxmlElement('w:top')
-                top.set(qn('w:val'), 'single')
-                top.set(qn('w:sz'), str(thickness * 20))
-                top.set(qn('w:color'), '000000')
-                tcBdr.append(top)
-                tcPr.append(tcBdr)
-    except Exception as e:
-        logger.warning("Failed to set table top border: %s", e)
+    paragraphs = list(doc.paragraphs)
+    for i, para in enumerate(paragraphs):
+        if placeholder in para.text:
+            for j in range(i + 1, len(paragraphs)):
+                if is_empty_paragraph(paragraphs[j]):
+                    p = paragraphs[j]._element
+                    p.getparent().remove(p)
+                else:
+                    break
 
-    return table_elem
+
+def _remove_empty_paragraphs_before_first_element(doc: Document) -> None:
+    """Remove empty paragraphs before the first table in the document."""
+    body = doc.element.body
+    paragraphs = list(body.iter(qn("w:p")))
+    for p in paragraphs:
+        text = "".join(t.text for t in p.iter(qn("w:t"))).strip()
+        if not text:
+            body.remove(p)
+        else:
+            break
+
+
+def _set_cell_top_border(cell, thickness: int = 3) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tc = cell._element
+    tcPr = tc.get_or_add_tcPr()
+    
+    tcBdr = tcPr.find(qn("w:tcBdr"))
+    if tcBdr is None:
+        tcBdr = OxmlElement("w:tcBdr")
+        tcPr.append(tcBdr)
+    
+    for border_name in ["w:top"]:
+        border = OxmlElement(border_name)
+        border.set(qn("w:val"), "single")
+        border.set(qn("w:sz"), str(thickness * 8))
+        border.set(qn("w:color"), "000000")
+        border.set(qn("w:space"), "0")
+        tcBdr.append(border)
+
+
+def _set_table_borders(table, thickness: int = 3) -> None:
+    """Set table-level borders that work better with LibreOffice."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    
+    tbl = table._element
+    tblPr = tbl.find(qn("w:tblPr"))
+    if tblPr is None:
+        tblPr = OxmlElement("w:tblPr")
+        tbl.insert(0, tblPr)
+    
+    tblBorders = tblPr.find(qn("w:tblBorders"))
+    if tblBorders is None:
+        tblBorders = OxmlElement("w:tblBorders")
+        tblPr.append(tblBorders)
+    
+    for border_name in ["w:top"]:
+        border = OxmlElement(border_name)
+        border.set(qn("w:val"), "single")
+        border.set(qn("w:sz"), str(thickness * 8))
+        border.set(qn("w:color"), "000000")
+        tblBorders.append(border)
 
 
 def _add_label_paragraph(
@@ -220,20 +262,13 @@ def _add_label_paragraph(
     font_size_pt: int = 11,
     color_hex: str = "000000",
     bold: bool = False,
-    alignment=WD_ALIGN_PARAGRAPH.LEFT,
 ) -> None:
     para = doc.add_paragraph()
-    para.alignment = alignment
     run = para.add_run(text)
-    run.font.name      = font_name
-    run.font.size      = Pt(font_size_pt)
-    run.font.bold      = bold
+    run.font.name = font_name
+    run.font.size = Pt(font_size_pt)
+    run.font.bold = bold
     run.font.color.rgb = RGBColor.from_string(color_hex)
-
-
-def _add_page_break(doc: Document) -> None:
-    para = doc.add_paragraph()
-    para._element.add_br(type=6)
 
 
 def _add_image_paragraph(doc: Document, image_path: str) -> None:
@@ -241,48 +276,6 @@ def _add_image_paragraph(doc: Document, image_path: str) -> None:
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = para.add_run()
     run.add_picture(image_path, width=Inches(IMG_WIDTH_INCHES))
-
-
-def _add_style_table(doc: Document, style_text: str) -> None:
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-
-    table = doc.add_table(rows=1, cols=1)
-
-    cell = table.rows[0].cells[0]
-    cell.text = style_text
-
-    cell_para = cell.paragraphs[0]
-    cell_para.runs[0].font.name = "Verdana"
-    cell_para.runs[0].font.size = Pt(14)
-    cell_para.runs[0].font.bold = True
-
-    tc = cell._element
-    tcPr = tc.get_or_add_tcPr()
-    tcBdr = OxmlElement("w:tcBdr")
-    top = OxmlElement("w:top")
-    top.set(qn("w:val"), "single")
-    top.set(qn("w:sz"), "24")
-    top.set(qn("w:color"), "000000")
-    top.set(qn("w:space"), "0")
-    tcBdr.append(top)
-    tcPr.append(tcBdr)
-
-
-def _set_cell_top_border(cell, thickness: int = 3) -> None:
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-
-    tc = cell._element
-    tcPr = tc.get_or_add_tcPr()
-    tcBdr = OxmlElement("w:tcBdr")
-    top = OxmlElement("w:top")
-    top.set(qn("w:val"), "single")
-    top.set(qn("w:sz"), str(thickness * 8))
-    top.set(qn("w:color"), "000000")
-    top.set(qn("w:space"), "0")
-    tcBdr.append(top)
-    tcPr.append(tcBdr)
 
 
 # ── Per-folder DOCX generation ────────────────────────────────────────────────
@@ -313,9 +306,14 @@ def _generate_docx(
         "style": f"STYLE NO : {style_name}",
     })
 
-    sep_table = doc.tables[0]
-    _copy_sep_table = sep_table
     doc.tables[0]._element.getparent().remove(doc.tables[0]._element)
+
+    # Remove empty paragraphs after table removal
+    body = doc.element.body
+    empty_paras = [p for p in body.iter(qn("w:p")) 
+                   if not "".join(t.text for t in p.iter(qn("w:t"))).strip()]
+    for p in empty_paras:
+        body.remove(p)
 
     pages = [image_paths[i:i + IMAGES_PER_PAGE]
              for i in range(0, len(image_paths), IMAGES_PER_PAGE)]
@@ -324,15 +322,10 @@ def _generate_docx(
         if page_idx > 0:
             doc.add_page_break()
 
-        new_sep = doc.add_table(rows=len(_copy_sep_table.rows), cols=len(_copy_sep_table.columns))
-        for i, row in enumerate(_copy_sep_table.rows):
-            for j, cell in enumerate(row.cells):
-                new_sep.rows[i].cells[j].text = cell.text
-        for i, row in enumerate(new_sep.rows):
-            for cell in row.cells:
-                _set_cell_top_border(cell, thickness=3)
-
-        _add_style_table(doc, f"STYLE NO : {style_name}")
+        new_sep = doc.add_table(rows=1, cols=1)
+        new_sep.rows[0].cells[0].text = ""
+        _set_cell_top_border(new_sep.rows[0].cells[0], thickness=3)
+        _set_table_borders(new_sep, thickness=3)
 
         for img_path in page_images:
             stem = Path(img_path).stem
@@ -360,6 +353,7 @@ def _generate_docx(
 
     os.makedirs(os.path.dirname(output_docx_path), exist_ok=True)
     doc.save(output_docx_path)
+    os.chmod(output_docx_path, 0o644)
     logger.info("DOCX saved: %s", output_docx_path)
 
 
@@ -475,7 +469,7 @@ def process_defect_docx_task(
 
             # FIX: output_base now defined above from settings
             folder_output_dir = output_base / str(batch_id) / folder_name
-            folder_output_dir.mkdir(parents=True, exist_ok=True)
+            folder_output_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
 
             # FIX: Create FolderReport BEFORE inner try so it exists for error logging
             report = FolderReport.objects.create(
