@@ -1,0 +1,1 @@
+from .process_image import process_defect_docx_task as process_folder_task

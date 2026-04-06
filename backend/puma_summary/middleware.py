@@ -32,23 +32,30 @@ def _get_user_from_token(token_key: str):
     Validate a simplejwt access token and return the corresponding User.
     Returns AnonymousUser on any failure.
     """
-    from django.contrib.auth.models import User
-    from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-    from rest_framework_simplejwt.tokens import AccessToken
-
     try:
-        token    = AccessToken(token_key)
-        user_id  = token["user_id"]
-        return User.objects.get(pk=user_id)
-    except (InvalidToken, TokenError) as exc:
-        logger.debug("WS JWT invalid: %s", exc)
-        return AnonymousUser()
-    except User.DoesNotExist:
-        logger.debug("WS JWT user_id not found.")
-        return AnonymousUser()
-    except Exception as exc:
-        logger.warning("WS JWT unexpected error: %s", exc)
-        return AnonymousUser()
+        from django.contrib.auth.models import User
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        try:
+            token    = AccessToken(token_key)
+            user_id  = token["user_id"]
+            return User.objects.get(pk=user_id)
+        except (InvalidToken, TokenError) as exc:
+            logger.debug("WS JWT invalid: %s", exc)
+            return AnonymousUser()
+        except User.DoesNotExist:
+            logger.debug("WS JWT user_id not found.")
+            return AnonymousUser()
+        except Exception as exc:
+            logger.warning("WS JWT unexpected error: %s", exc)
+            return AnonymousUser()
+    except RuntimeError as e:
+        if "cannot schedule new futures after interpreter shutdown" in str(e):
+            logger.debug("Skipping user auth during shutdown: %s", e)
+            return AnonymousUser()
+        else:
+            raise
 
 
 class JWTAuthMiddleware(BaseMiddleware):

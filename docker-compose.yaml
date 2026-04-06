@@ -11,6 +11,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app_network
 
   backend:
     build:
@@ -32,6 +34,8 @@ services:
       redis:
         condition: service_healthy
     command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      - app_network
 
   celery-worker:
     build:
@@ -50,7 +54,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A summary_backend worker -l info -Q puma_summary
+    command: celery -A summary_backend worker -l info -Q puma_summary,celery
+    networks:
+      - app_network
+    restart: always
 
   celery-beat:
     build:
@@ -70,6 +77,9 @@ services:
       redis:
         condition: service_healthy
     command: celery -A summary_backend beat -l info
+    networks:
+      - app_network
+    restart: always
 
   frontend:
     build:
@@ -86,6 +96,12 @@ services:
       - VITE_WS_URL=/ws
     depends_on:
       - backend
-
+    networks:
+      - app_network
+      
 volumes:
   redis_data:
+
+networks:
+  app_network:
+    driver: bridge

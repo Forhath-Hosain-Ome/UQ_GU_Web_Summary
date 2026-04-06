@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useAuthStore } from "../store/authStore";
-import { login } from "../services/pumaApi";
+import { login } from "../services/authApi";
 
 export default function LoginPage() {
   const navigate  = useNavigate();
