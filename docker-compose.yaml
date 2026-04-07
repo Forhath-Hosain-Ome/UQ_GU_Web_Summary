@@ -1,4 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=summary_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -38,6 +60,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - app_network
     command: daphne -b 0.0.0.0 -p 8000 summary_backend.asgi:application
@@ -61,6 +85,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     command: celery -A summary_backend worker -l info -Q puma_summary,celery --concurrency=4
     networks:
       - app_network
@@ -83,6 +109,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     command: celery -A summary_backend beat -l info
     networks:
       - app_network
@@ -102,6 +130,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:
 
 networks:
