@@ -54,6 +54,11 @@ services:
       - .env                         # secrets stay out of compose file
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=summary_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -79,6 +84,11 @@ services:
       - .env
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=summary_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -87,7 +97,7 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    command: celery -A summary_backend worker -l info -Q puma_summary,celery --concurrency=4
+    command: celery -A summary_backend worker -l info -Q puma_summary,celery,image_processor --concurrency=4
     networks:
       - app_network
     restart: unless-stopped
@@ -103,6 +113,11 @@ services:
       - .env
     environment:
       - DJANGO_SETTINGS_MODULE=summary_backend.settings
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=summary_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - CELERY_BROKER_URL=redis://redis:6379/0
