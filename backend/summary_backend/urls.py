@@ -8,7 +8,7 @@ urlpatterns = [
     path("auth/token/",         TokenObtainPairView.as_view(), name="token_obtain"),
     path("auth/token/refresh/", TokenRefreshView.as_view(),    name="token_refresh"),
 
-    path("api/", include("puma_summary.urls", namespace="puma_summary")),
+    path("puma/", include("puma_summary.urls", namespace="puma_summary")),
     path("image/", include("image_processor.urls", namespace="image_processor")),
-    path("api/final-summary/", include("final_summary.urls", namespace="final_summary")),
+    path("final-summary/", include("final_summary.urls", namespace="final_summary")),
 ]

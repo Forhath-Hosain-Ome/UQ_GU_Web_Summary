@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 const SERVICES = [
   { id: "puma", label: "PUMA SUMMARY", path: "/puma" },
   { id: "defect_image", label: "Defect Image", path: "/image" },
+  { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
   // Future services added here
 ];
 

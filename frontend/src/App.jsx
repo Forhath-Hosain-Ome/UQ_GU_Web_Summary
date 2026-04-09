@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./store/authStore";
 import LoginPage from "./pages/LoginPage";
 import PumaPage  from "./pages/PumaPage";
+import FinalSummaryPage from "./pages/FinalSummaryPage";
 import DefectImagePage from "./pages/DefectImagePage";
 
 const qc = new QueryClient({
@@ -33,6 +34,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <DefectImagePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/audit"
+            element={
+              <RequireAuth>
+                <FinalSummaryPage />
               </RequireAuth>
             }
           />

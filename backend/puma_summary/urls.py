@@ -1,6 +1,4 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-
 from puma_summary.views import (
     BatchDetailView,
     BatchListView,
@@ -20,12 +18,12 @@ app_name = "puma_summary"
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  BATCHES
-#  POST   /api/batches/upload/         → upload PDFs, create batch, fire task
-#  GET    /api/batches/                → paginated batch list
-#  GET    /api/batches/<pk>/           → full batch detail + nested reports
-#  POST   /api/batches/<pk>/retry/     → re-run failed PDFs only
-#  GET    /api/batches/<pk>/logs/      → structured {filename, reason} log
-#  GET    /api/batches/<pk>/excel/     → stream Excel download
+#  POST   /batches/upload/         → upload PDFs, create batch, fire task
+#  GET    /batches/                → paginated batch list
+#  GET    /batches/<pk>/           → full batch detail + nested reports
+#  POST   /batches/<pk>/retry/     → re-run failed PDFs only
+#  GET    /batches/<pk>/logs/      → structured {filename, reason} log
+#  GET    /batches/<pk>/excel/     → stream Excel download
 # ─────────────────────────────────────────────────────────────────────────────
 
 batch_urlpatterns = [

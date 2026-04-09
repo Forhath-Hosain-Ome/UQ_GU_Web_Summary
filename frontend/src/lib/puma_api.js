@@ -3,7 +3,7 @@ import { attachInterceptors } from "./apiInterceptor";
 
 const puma_api = attachInterceptors(
   axios.create({
-    baseURL: "/api/",
+    baseURL: "/puma/",
   })
 );
 

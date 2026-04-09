@@ -2,32 +2,25 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import sys
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-# Allow importing the top-level workspace `analysis` package from backend code.
+
 WORKSPACE_ROOT = BASE_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-bybxt97-yxn5dgy73aljwqk$u41f(af%eiwcx!bj9#$tp2aj%n'
 
-# SECURITY WARNING: don't run with debug turned on in production!
+
 DEBUG = True
 
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     'backend',
-    # Add your production domain here, e.g. 'myapp.example.com'
 ]
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'daphne',
@@ -41,6 +34,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'corsheaders',
 
     'puma_summary.apps.PumaSummaryConfig',
     'image_processor.apps.ImageProcessorConfig',
@@ -50,6 +44,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -61,11 +56,8 @@ ROOT_URLCONF = 'summary_backend.urls'
 
 # ── Django REST Framework ─────────────────────────────────────────────────────
 REST_FRAMEWORK = {
-    # All endpoints require a valid JWT access token by default.
-    # Individual views can override with AllowAny if needed.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
-        
         "rest_framework.authentication.SessionAuthentication",  
         "rest_framework.authentication.BasicAuthentication",    
     ],
@@ -88,15 +80,11 @@ REST_FRAMEWORK = {
 
 # ── Simple JWT ────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    # Access token expires in 1 hour — user must use refresh token to renew.
-    # Refresh token expires in 1 day — re-login required every 24 hours.
     "ACCESS_TOKEN_LIFETIME":  timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
  
-    "ROTATE_REFRESH_TOKENS":    True,   # issue a new refresh token on every refresh
-    "BLACKLIST_AFTER_ROTATION": True,   # invalidate old refresh token immediately
-                                        # requires 'rest_framework_simplejwt.token_blacklist'
-                                        # in INSTALLED_APPS + migration
+    "ROTATE_REFRESH_TOKENS":    True,   
+    "BLACKLIST_AFTER_ROTATION": True,
  
     "ALGORITHM":              "HS256",
     "AUTH_HEADER_TYPES":      ("Bearer",),
@@ -186,18 +174,10 @@ DATABASES = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
 
@@ -239,26 +219,14 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-
     "handlers": {
-        "file": {
-            "level": "INFO",
-            "class": "logging.FileHandler",
-            "filename": LOG_FILE,
-        },
+        "file":    {"level": "INFO", "class": "logging.FileHandler", "filename": LOG_FILE},
+        "console": {"level": "DEBUG", "class": "logging.StreamHandler"},
     },
-
     "loggers": {
-        "puma_summary": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": True,
-        },
-        "pdf": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": True,
-        },
+        "puma_summary":    {"handlers": ["file","console"], "level": "INFO", "propagate": False},
+        "image_processor": {"handlers": ["file","console"], "level": "INFO", "propagate": False},
+        "final_summary":   {"handlers": ["file","console"], "level": "INFO", "propagate": False},
     },
 }
 
