@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from .inspection_batch_model import InspectionBatch
 from shared.models import BaseModel
 from django.utils import timezone
@@ -6,6 +7,11 @@ from django.utils import timezone
 class InspectionReport(BaseModel):
     batch = models.ForeignKey(
         InspectionBatch, on_delete=models.CASCADE, related_name="reports"
+    )
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="inspection_reports",
     )
 
     # Which PDF this came from (name only — file is NOT stored)
@@ -49,6 +55,6 @@ class InspectionReport(BaseModel):
         return f"{self.style}({','.join(pos)})"
     
     @property
-    def created_by(self):
+    def created_by_user(self):
         """Convenience accessor — delegates to the parent batch."""
         return self.batch.created_by

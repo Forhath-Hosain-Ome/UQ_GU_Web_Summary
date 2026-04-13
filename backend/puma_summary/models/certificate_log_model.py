@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from .inspection_report_model import InspectionReport
 from shared.models import BaseModel
 
@@ -14,9 +15,14 @@ class CertificateLog(BaseModel):
     report = models.ForeignKey(
         InspectionReport, on_delete=models.CASCADE, related_name="certificate_logs"
     )
+
+    generated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="certificate_logs",
+    )
+
     generated_at   = models.DateTimeField(auto_now_add=True)
-    downloaded_at  = models.DateTimeField(null=True, blank=True)  # set when served
-    generated_by   = models.CharField(max_length=150, blank=True)  # username if auth added later
+    downloaded_at  = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-generated_at"]

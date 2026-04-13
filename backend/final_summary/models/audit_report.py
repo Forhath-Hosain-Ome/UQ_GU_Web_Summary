@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from shared.models import BaseModel
 from .upload_batch import UploadBatch
 
@@ -13,6 +14,11 @@ class AuditReport(BaseModel):
 
     batch = models.ForeignKey(
         UploadBatch, on_delete=models.CASCADE, related_name="reports",
+    )
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="audit_reports",
     )
 
     # Source file

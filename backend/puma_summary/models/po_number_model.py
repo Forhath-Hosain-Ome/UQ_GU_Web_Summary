@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from .inspection_report_model import InspectionReport
 from shared.models import BaseModel
 
@@ -12,6 +13,12 @@ class PONumber(BaseModel):
     report = models.ForeignKey(
         InspectionReport, on_delete=models.CASCADE, related_name="po_numbers"
     )
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="po_numbers",
+    )
+
     number = models.CharField(max_length=50, db_index=True)
 
     class Meta:

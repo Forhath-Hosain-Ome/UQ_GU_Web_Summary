@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from shared.models import BaseModel
 from .audit_report import AuditReport
 
@@ -13,6 +14,12 @@ class DefectEntry(BaseModel):
     report      = models.ForeignKey(
         AuditReport, on_delete=models.CASCADE, related_name="defect_entries",
     )
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="defect_entries",
+    )
+
     category    = models.CharField(max_length=100, blank=True, db_index=True)
     item        = models.CharField(max_length=512, blank=True)
     major       = models.PositiveIntegerField(default=0)

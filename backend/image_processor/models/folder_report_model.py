@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from .folder_batch_model import FolderBatch
 from shared.models import BaseModel
 from django.utils import timezone
@@ -11,6 +12,11 @@ class FolderReport(BaseModel):
     """
     batch = models.ForeignKey(
         FolderBatch, on_delete=models.CASCADE, related_name="reports"
+    )
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="folder_reports",
     )
 
     # Which folder this came from (relative path)
@@ -48,6 +54,6 @@ class FolderReport(BaseModel):
         return f"{self.folder_name} | {self.status} | Batch #{self.batch_id}"
 
     @property
-    def created_by(self):
+    def created_by_user(self):
         """Convenience accessor — delegates to the parent batch."""
         return self.batch.created_by
