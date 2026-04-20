@@ -19,6 +19,7 @@ django_asgi_app = get_asgi_application()
 
 # 3. Import Channels components AFTER get_asgi_application()
 from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.security.websocket import AllowedHostsOriginValidator
 from puma_summary.middleware import JWTAuthMiddleware
 from puma_summary.routing import websocket_urlpatterns as puma_ws
 from final_summary.routing import websocket_urlpatterns as audit_ws

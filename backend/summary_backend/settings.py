@@ -121,6 +121,8 @@ CORS_ALLOWED_ORIGINS = [
     os.getenv('DJANGO_ALLOWED_HOST', '')
 ]
 
+CORS_ALLOW_ALL_ORIGINS = True
+
 # Allow credentials (cookies, authorization headers) for cross-origin requests
 CORS_ALLOW_CREDENTIALS = True
 

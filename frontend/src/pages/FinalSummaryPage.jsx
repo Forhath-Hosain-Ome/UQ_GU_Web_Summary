@@ -342,14 +342,14 @@ function ExportStage({ lastBatchId, lastCount }) {
               <Label required>FACTORY</Label>
               <select value={form.factory} onChange={e => set("factory", e.target.value)} style={fieldStyle}>
                 <option value="">Select factory…</option>
-                {options.factories.map(f => <option key={f} value={f}>{f}</option>)}
+                {(options.factories || []).map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div>
               <Label required>BUYER / CLIENT</Label>
               <select value={form.client} onChange={e => set("client", e.target.value)} style={fieldStyle}>
                 <option value="">Select buyer…</option>
-                {options.clients.map(c => <option key={c} value={c}>{c}</option>)}
+                {(options.clients || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
@@ -377,7 +377,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                   onChange={e => set("style", e.target.value)} style={fieldStyle}
                   list="fs-style-opts" />
                 <datalist id="fs-style-opts">
-                  {options.styles.slice(0, 100).map(s => <option key={s} value={s} />)}
+                  {(options.styles || []).slice(0, 100).map(s => <option key={s} value={s} />)}
                 </datalist>
               </div>
               <div>
@@ -386,7 +386,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                   onChange={e => set("po", e.target.value)} style={fieldStyle}
                   list="fs-po-opts" />
                 <datalist id="fs-po-opts">
-                  {options.po_numbers.slice(0, 100).map(p => <option key={p} value={p} />)}
+                  {(options.po_numbers || []).slice(0, 100).map(p => <option key={p} value={p} />)}
                 </datalist>
               </div>
             </div>
