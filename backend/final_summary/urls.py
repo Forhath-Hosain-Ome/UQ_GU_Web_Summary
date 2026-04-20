@@ -8,6 +8,7 @@ from final_summary.views import (
     AuditRetryView,
     AuditBatchLogsView,
     AuditBatchErrorJsonView,
+    AuditReportGenerateView,
 )
 
 app_name = "final_summary"
@@ -40,4 +41,8 @@ urlpatterns = [
 
     # ── Filter options (for export form dropdowns) ─────────────────────────────
     path("options/",          AuditFilterOptionsView.as_view(), name="filter_options"),
+
+
+    path("top-5", AuditReportGenerateView.as_view(), name="top-5",
+    ),
 ]
