@@ -28,6 +28,9 @@ RUN useradd -m -u 1001 appuser && \
     touch /app/db.sqlite3 && \
     chown -R appuser:appuser /app/media /app/logs /app/db.sqlite3 /app
 
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 COPY --chown=appuser:appuser . .
 
 USER appuser

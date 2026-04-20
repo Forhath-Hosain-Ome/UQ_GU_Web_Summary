@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from datetime import timedelta
 import os
@@ -115,11 +116,14 @@ CHANNEL_LAYERS = {
 # ── CORS (React dev server) ────────────────────────────────────────────────────
 # Allow the React dev server to call the API without CORS errors.
 # In production, replace with your actual frontend domain.
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # Vite default
-    "http://localhost:3000",   # CRA default
-    os.getenv('DJANGO_ALLOWED_HOST', '')
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",   # Vite default
+#     "http://localhost:3000",   # CRA default
+# ]
+
+# extra_host = os.getenv('DJANGO_ALLOWED_HOST')
+# if extra_host:
+#     CORS_ALLOWED_ORIGINS.append(extra_host)
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -214,21 +218,50 @@ TEMPLATE_ROOT = MEDIA_ROOT / "templates"
 # Log files
 
 LOG_DIR = BASE_DIR / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)  
-LOG_FILE = LOG_DIR / "app.log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+
+class AppUserDateHandler(logging.Handler):
+    """Routes logs to logs/<app>/<username>/<date>.log"""
+    def emit(self, record):
+        from datetime import date
+        app      = getattr(record, 'app', record.name.split('.')[0])
+        username = getattr(record, 'username', 'system')
+        day      = date.today().strftime('%Y-%m-%d')
+
+        log_path = LOG_DIR / app / username
+        log_path.mkdir(parents=True, exist_ok=True)
+
+        file_path = log_path / f"{day}.log"
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(self.format(record) + '\n')
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "{asctime} [{levelname}] {name}: {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
     "handlers": {
-        "file":    {"level": "INFO", "class": "logging.FileHandler", "filename": LOG_FILE},
-        "console": {"level": "DEBUG", "class": "logging.StreamHandler"},
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "app_user_date": {
+            "()": AppUserDateHandler,
+            "formatter": "standard",
+        },
     },
     "loggers": {
-        "puma_summary":    {"handlers": ["file","console"], "level": "INFO", "propagate": False},
-        "image_processor": {"handlers": ["file","console"], "level": "INFO", "propagate": False},
-        "final_summary":   {"handlers": ["file","console"], "level": "INFO", "propagate": False},
+        "puma_summary":    {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "image_processor": {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "final_summary":   {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
     },
 }
 
