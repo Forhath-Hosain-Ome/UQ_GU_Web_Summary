@@ -283,7 +283,11 @@ function ExportStage({ lastBatchId, lastCount }) {
     setLoading(true);
     fetchFilterOptions()
       .then(data => { setOptions(data); setLoading(false); })
-      .catch(e  => { addLog({ level: "error", message: `Options load failed: ${e.message}` }); setLoading(false); });
+       .catch(e  => {
+        addLog({ level: "error", message: `Options load failed: ${e.message}` });
+        setOptions({ factories: [], clients: [], styles: [], po_numbers: [] });
+        setLoading(false);
+      });
   }, [lastBatchId]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -337,20 +341,49 @@ function ExportStage({ lastBatchId, lastCount }) {
 
       {!loading && options && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          
+          {(options.factories || []).length === 0 && (options.clients || []).length === 0 && (
+            <div style={{
+              background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)",
+              borderRadius: "7px", padding: "14px 18px",
+              fontFamily: "var(--font-mono)", fontSize: "11px",
+              color: "var(--color-warning)", lineHeight: 1.8,
+            }}>
+              ⚠ No data in the database yet.<br />
+              <span style={{ opacity: 0.7 }}>
+                Go to Stage 1 and upload Excel files first. You can still type factory and buyer names manually below.
+              </span>
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
               <Label required>FACTORY</Label>
-              <select value={form.factory} onChange={e => set("factory", e.target.value)} style={fieldStyle}>
-                <option value="">Select factory…</option>
-                {(options.factories || []).map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
+              <input
+                type="text"
+                value={form.factory}
+                placeholder="Type or select factory…"
+                onChange={e => set("factory", e.target.value)}
+                style={fieldStyle}
+                list="fs-factory-opts"
+              />
+              <datalist id="fs-factory-opts">
+                {(options?.factories || []).map(f => <option key={f} value={f} />)}
+              </datalist>
             </div>
             <div>
               <Label required>BUYER / CLIENT</Label>
-              <select value={form.client} onChange={e => set("client", e.target.value)} style={fieldStyle}>
-                <option value="">Select buyer…</option>
-                {(options.clients || []).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <input
+                type="text"
+                value={form.client}
+                placeholder="Type or select buyer…"
+                onChange={e => set("client", e.target.value)}
+                style={fieldStyle}
+                list="fs-client-opts"
+              />
+              <datalist id="fs-client-opts">
+                {(options?.clients || []).map(c => <option key={c} value={c} />)}
+              </datalist>
             </div>
             <div>
               <Label required>DATE FROM</Label>
