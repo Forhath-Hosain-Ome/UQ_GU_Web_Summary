@@ -1,48 +1,67 @@
 import final_summary_api from "../lib/final_summary_api";
 
-
-// ── Batches ───────────────────────────────────────────────────────────────────
-export const fetchBatches = (params) =>
-  puma_api.get("batches/", { params }).then((r) => r.data);
-
-export const fetchBatch = (pk) =>
-  puma_api.get(`batches/${pk}/`).then((r) => r.data);
-
+// ── Upload ────────────────────────────────────────────────────────────────────
+/**
+ * POST /final-summary/upload/
+ * Accepts one or many .xlsx/.xls files.
+ * Returns { batch_id, total_files, files, ws_channel, message }
+ */
 export const uploadBatch = (files) => {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
-  return puma_api.post("batches/upload/", fd).then((r) => r.data);
+  return final_summary_api.post("upload/", fd).then((r) => r.data);
 };
 
+// ── Batches ───────────────────────────────────────────────────────────────────
+export const fetchBatches = (params) =>
+  final_summary_api.get("batches/", { params }).then((r) => r.data);
+
+export const fetchBatch = (pk) =>
+  final_summary_api.get(`batches/${pk}/`).then((r) => r.data);
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
 /**
- * Retry failed PDFs for a batch.
- * @param {number} pk - Batch ID
- * @param {string[]} [filenames] - Optional list of specific filenames to retry.
- *   Omit (or pass []) to retry ALL unretried failures.
+ * GET /final-summary/batches/<pk>/logs/
+ * Returns structured error log: { batch_id, status, total_files, failed, errors: [...] }
  */
-export const retryBatch = (pk, filenames = []) =>
-  puma_api
-    .post(`batches/${pk}/retry/`, filenames.length ? { filenames } : {})
+export const fetchBatchLogs = (pk) =>
+  final_summary_api.get(`batches/${pk}/logs/`).then((r) => r.data);
+
+/**
+ * GET /final-summary/batches/<pk>/logs/error-json/
+ * Returns a JSON payload the user can edit and POST to /retry/.
+ * Shape: { version, batch_id, total_blocked, records: [...] }
+ */
+export const fetchErrorJson = (pk) =>
+  final_summary_api.get(`batches/${pk}/logs/error-json/`).then((r) => r.data);
+
+// ── Retry ─────────────────────────────────────────────────────────────────────
+/**
+ * POST /final-summary/retry/
+ * Body: { batch_id: number, records: AuditRecord[] }
+ * Returns { batch_id, submitted, saved, still_blocked: [...] }
+ */
+export const retryBatch = (batchId, records) =>
+  final_summary_api
+    .post("retry/", { batch_id: batchId, records })
     .then((r) => r.data);
 
-export const fetchBatchLogs = (pk) =>
-  puma_api.get(`batches/${pk}/logs/`).then((r) => r.data);
+// ── Export / Download ─────────────────────────────────────────────────────────
+/**
+ * GET /final-summary/export/
+ * Required params: factory, client, date_from, date_to
+ * Optional params: style, po
+ * Returns .xlsx blob
+ */
+export const downloadSummary = (params) =>
+  final_summary_api
+    .get("export/", { params, responseType: "blob" })
+    .then((r) => ({ blob: r.data, headers: r.headers }));
 
-export const downloadExcel = (pk) =>
-  puma_api.get(`batches/${pk}/excel/`, { responseType: "blob" }).then((r) => r.data);
-
-// ── Reports ───────────────────────────────────────────────────────────────────
-export const fetchReports = (params) =>
-  puma_api.get("reports/", { params }).then((r) => r.data);
-
-export const fetchReport = (pk) =>
-  puma_api.get(`reports/${pk}/`).then((r) => r.data);
-
-export const downloadReportPDF = (pk) =>
-  puma_api.get(`reports/${pk}/pdf/`, { responseType: "blob" }).then((r) => r.data);
-
-export const downloadCertificate = (pk) =>
-  puma_api.get(`reports/${pk}/certificate/`, { responseType: "blob" }).then((r) => r.data);
-
-export const fetchCertificateLogs = (pk) =>
-  puma_api.get(`reports/${pk}/certificates/`).then((r) => r.data);
+// ── Filter options (for export form dropdowns) ────────────────────────────────
+/**
+ * GET /final-summary/options/
+ * Returns { factories, clients, min_date, max_date, styles, po_numbers }
+ */
+export const fetchFilterOptions = () =>
+  final_summary_api.get("options/").then((r) => r.data);
