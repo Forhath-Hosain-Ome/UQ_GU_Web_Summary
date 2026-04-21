@@ -282,7 +282,17 @@ function ExportStage({ lastBatchId, lastCount }) {
   useEffect(() => {
     setLoading(true);
     fetchFilterOptions()
-      .then(data => { setOptions(data); setLoading(false); })
+      .then(data => {
+        setOptions({
+          factories:  Array.isArray(data?.factories)  ? data.factories  : [],
+          clients:    Array.isArray(data?.clients)    ? data.clients    : [],
+          styles:     Array.isArray(data?.styles)     ? data.styles     : [],
+          po_numbers: Array.isArray(data?.po_numbers) ? data.po_numbers : [],
+          min_date:   data?.min_date ?? null,
+          max_date:   data?.max_date ?? null,
+        });
+        setLoading(false);
+      })
        .catch(e  => {
         addLog({ level: "error", message: `Options load failed: ${e.message}` });
         setOptions({ factories: [], clients: [], styles: [], po_numbers: [] });
@@ -853,8 +863,19 @@ function BatchHistory({ refreshKey, onSelectBatch }) {
   useEffect(() => {
     setLoading(true);
     fetchBatches()
-      .then(data => { setBatches(data.results || data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(data => {
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.results)
+          ? data.results
+          : [];
+        setBatches(list);
+        setLoading(false);
+      })
+      .catch(() => {
+        setBatches([]);
+        setLoading(false);
+      });
   }, [refreshKey]);
 
   const STATUS_COLOR = {
@@ -929,6 +950,7 @@ function BatchHistory({ refreshKey, onSelectBatch }) {
 // Main page
 // ════════════════════════════════════════════════════════════════════════════════
 export default function FinalSummaryPage() {
+  console.log("NEW BUILD LOADED"); 
   const [stage, setStage]         = useState("upload");
   const [lastBatchId, setLast]    = useState(null);
   const [lastCount, setCount]     = useState(0);
