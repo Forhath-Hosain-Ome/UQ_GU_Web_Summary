@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'puma_summary.apps.PumaSummaryConfig',
     'image_processor.apps.ImageProcessorConfig',
     'final_summary.apps.FinalSummaryConfig',
+    'top_five.apps.TopFiveConfig',
 ]
 
 MIDDLEWARE = [
@@ -279,6 +280,11 @@ IMAGE_PROCESSOR_SETTINGS = {
     "DEFECT_DOCX":        BASE_DIR / "media/output/defect_image/defect_docx",
 }
 
+TOP_FIVE_SETTINGS = {
+    "TOP_FIVE_TEMPLATE_PATH": TEMPLATE_ROOT / "template.xlsx",
+    "OUTPUT_DIR" :        BASE_DIR / "media/output/top_five",
+}
+
 # Celery Setup
 
 
@@ -292,4 +298,5 @@ CELERY_TASK_ROUTES = {
     'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
     'image_processor.process_defect_docx':   {'queue': 'celery'},
     'final_summary.process_audit_upload':    {'queue': 'celery'},
+    'top_five.run_top5_job':                 {'queue': 'celery'},
 }
