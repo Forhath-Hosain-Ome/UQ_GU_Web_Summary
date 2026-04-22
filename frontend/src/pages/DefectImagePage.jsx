@@ -4,6 +4,7 @@ import LogsPanel from "../components/layout/LogsPanel";
 import ApiMenu from "../components/layout/ApiMenu";
 import OutputPanel from "../components/layout/OutputPanel";
 import { useOutputStore } from "../store/outputStore";
+import { useAuthStore } from "../store/authStore";
 import { fetchBatches, fetchReports } from "../services/defectImageApi";
 
 const IMAGE_SECTIONS = [
@@ -28,8 +29,19 @@ const IMAGE_SECTIONS = [
 ];
 
 export default function DefectImagePage() {
+  const { user } = useAuthStore();
   const { setOutput, setLoading, addLog, clearOutput } = useOutputStore();
   const [activeId, setActiveId] = useState(null);
+
+  // Filter batches/reports to only show items created by the logged-in user
+  const filterByUser = (data) => {
+    const items = data?.results || data || [];
+    const filtered = items.filter(item => item.created_by && item.created_by.id === user?.user_id);
+    if (data?.results) {
+      return { ...data, results: filtered, count: filtered.length };
+    }
+    return filtered;
+  };
 
   const handleSelect = async (ep) => {
     setActiveId(ep.id);
@@ -46,8 +58,9 @@ export default function DefectImagePage() {
         addLog({ level: "info", message: "Fetching batch list…" });
         try {
           const data = await fetchBatches();
-          setOutput("batch-list", data, "All Batches", { action: "view", source: "image" });
-          addLog({ level: "success", message: `Loaded ${(data.results || data).length} batches` });
+          const filtered = filterByUser(data);
+          setOutput("batch-list", filtered, "All Batches", { action: "view", source: "image" });
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -59,8 +72,9 @@ export default function DefectImagePage() {
         addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
-          setOutput("report-list", data, "All Reports", { action: "view", source: "image" });
-          addLog({ level: "success", message: `Loaded ${(data.results || data).length} reports` });
+          const filtered = filterByUser(data);
+          setOutput("report-list", filtered, "All Reports", { action: "view", source: "image" });
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -76,8 +90,9 @@ export default function DefectImagePage() {
         addLog({ level: "info", message: "Fetching batch list…" });
         try {
           const data = await fetchBatches();
-          setOutput("batch-list", data, `Batches — ${ep.label}`, { action: ep.action, source: "image" });
-          addLog({ level: "success", message: `Loaded ${(data.results || data).length} batches` });
+          const filtered = filterByUser(data);
+          setOutput("batch-list", filtered, `Batches — ${ep.label}`, { action: ep.action, source: "image" });
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -94,8 +109,9 @@ export default function DefectImagePage() {
         addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
-          setOutput("report-list", data, `Reports — ${ep.label}`, { action: ep.action, source: "image" });
-          addLog({ level: "success", message: `Loaded ${(data.results || data).length} reports` });
+          const filtered = filterByUser(data);
+          setOutput("report-list", filtered, `Reports — ${ep.label}`, { action: ep.action, source: "image" });
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);

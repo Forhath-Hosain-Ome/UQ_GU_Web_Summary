@@ -2,6 +2,9 @@
 
 # 0. Ensure required directories exist with proper permissions
 echo "Setting up directories..."
+if [ "$(stat -c %u /app/media)" != "1001" ]; then
+    chown -R 1001:1001 /app/media /app/logs 2>/dev/null || true
+fi
 
 # Create all needed directories (in case they don't exist in mounted volume)
 mkdir -p /app/media/uploads/batch_uploads

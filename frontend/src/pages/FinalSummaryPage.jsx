@@ -857,18 +857,23 @@ function LogsStage({ lastBatchId }) {
 // Batch history sidebar
 // ════════════════════════════════════════════════════════════════════════════════
 function BatchHistory({ refreshKey, onSelectBatch }) {
-  const [batches, setBatches] = useState([]);
+   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     fetchBatches()
       .then(data => {
-        const list = Array.isArray(data)
+        let list = Array.isArray(data)
           ? data
           : Array.isArray(data?.results)
           ? data.results
           : [];
+        // Filter batches to only show those created by the logged-in user
+        const user = useAuthStore.getState().user;
+        if (user?.user_id) {
+          list = list.filter(b => b.created_by && b.created_by.id === user.user_id);
+        }
         setBatches(list);
         setLoading(false);
       })

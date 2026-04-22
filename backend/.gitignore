@@ -21,7 +21,9 @@ db.sqlite3-journal
 
 # C extensions
 *.so
-
+backend/media/output/
+backend/media/uploads/
+backend/media/puma/
 # Distribution / packaging
 .Python
 build/

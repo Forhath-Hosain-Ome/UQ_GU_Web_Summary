@@ -125,6 +125,7 @@ CHANNEL_LAYERS = {
 # extra_host = os.getenv('DJANGO_ALLOWED_HOST')
 # if extra_host:
 #     CORS_ALLOWED_ORIGINS.append(extra_host)
+ALLOWED_HOSTS = ['*']
 
 CORS_ALLOW_ALL_ORIGINS = True
 
