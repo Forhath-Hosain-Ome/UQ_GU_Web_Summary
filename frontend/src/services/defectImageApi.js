@@ -21,6 +21,18 @@ const normalizeBatch = (batch) => ({
   reports: batch.reports?.map(normalizeReport) || batch.reports,
 });
 
+// ── Shared download helper ────────────────────────────────────────────────────
+const triggerBlobDownload = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 // ── Batches ───────────────────────────────────────────────────────────────────
 export const fetchBatches = (params) =>
   image_api.get("folder/batches/", { params }).then((r) => r.data);
@@ -47,8 +59,22 @@ export const fetchReports = (params) =>
 export const fetchReport = (pk) =>
   image_api.get(`folder/reports/${pk}/`).then((r) => normalizeReport(r.data));
 
-export const downloadReportPDF = (pk) =>
-  image_api.get(`folder/reports/${pk}/pdf/`, { responseType: "blob" }).then((r) => r.data);
+export const downloadReportPDF = (pk, filename) =>
+  image_api
+    .get(`folder/reports/${pk}/pdf/`, { responseType: "blob" })
+    .then((r) => {
+      const disposition = r.headers["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const name = filename || match?.[1] || `Report_${pk}.pdf`;
+      triggerBlobDownload(r.data, name);
+    });
 
-export const downloadReportDOCX = (pk) =>
-  image_api.get(`folder/reports/${pk}/docx/`, { responseType: "blob" }).then((r) => r.data);
+export const downloadReportDOCX = (pk, filename) =>
+  image_api
+    .get(`folder/reports/${pk}/docx/`, { responseType: "blob" })
+    .then((r) => {
+      const disposition = r.headers["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const name = filename || match?.[1] || `Defect_Pictures_Style_${pk}.zip`;
+      triggerBlobDownload(r.data, name);
+    });
