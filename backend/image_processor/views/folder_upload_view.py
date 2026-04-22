@@ -63,8 +63,8 @@ class FolderUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        media_root = Path(settings.MEDIA_ROOT)
-        upload_base = media_root / "uploads" / "batch_uploads"
+        # Use /tmp instead of mounted media volume (which may have host permissions)
+        upload_base = Path("/tmp") / "batch_uploads"
         upload_base.mkdir(parents=True, exist_ok=True)
         temp_dir = str(upload_base / str(uuid.uuid4()))
 

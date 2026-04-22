@@ -7,10 +7,11 @@ const uploadFile  = (file) => {
   const fd = new FormData();
   fd.append("file", file);
 
-  return top_five_api.post("/upload/", fd).then((r) => r.data);
+  return top_five_api.post("/top5/upload/", fd).then((r) => r.data);
+
 };
-const pollStatus  = (jobId) => top_five_api.get(`/jobs/${jobId}/`).then((r) => r.data);
-const downloadUrl = (jobId) => `/jobs/${jobId}/download/`;
+const pollStatus  = (jobId) => top_five_api.get(`/top5/jobs/${jobId}/`).then((r) => r.data);
+const downloadUrl = (jobId) => `/top5/jobs/${jobId}/download/`;
 
 
 // ── shared styles ─────────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@ const SERVICES = [
   { id: "puma", label: "PUMA SUMMARY", path: "/puma" },
   { id: "defect_image", label: "Defect Image", path: "/image" },
   { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
-  { id: "top_five", label: "TOP FIVE", path: "/top-five" },
   // Future services added here
 ];
 

@@ -226,17 +226,22 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 class AppUserDateHandler(logging.Handler):
     """Routes logs to logs/<app>/<username>/<date>.log"""
     def emit(self, record):
-        from datetime import date
-        app      = getattr(record, 'app', record.name.split('.')[0])
-        username = getattr(record, 'username', 'system')
-        day      = date.today().strftime('%Y-%m-%d')
+        try:
+            from datetime import date
+            app      = getattr(record, 'app', record.name.split('.')[0])
+            username = getattr(record, 'username', 'system')
+            day      = date.today().strftime('%Y-%m-%d')
 
-        log_path = LOG_DIR / app / username
-        log_path.mkdir(parents=True, exist_ok=True)
+            log_path = LOG_DIR / app / username
+            log_path.mkdir(parents=True, exist_ok=True)
 
-        file_path = log_path / f"{day}.log"
-        with open(file_path, 'a', encoding='utf-8') as f:
-            f.write(self.format(record) + '\n')
+            file_path = log_path / f"{day}.log"
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(self.format(record) + '\n')
+        except Exception:
+            # Fallback to stderr if file logging fails (e.g., permission issues)
+            import sys
+            print(self.format(record), file=sys.stderr)
 
 LOGGING = {
     "version": 1,
@@ -263,6 +268,7 @@ LOGGING = {
         "puma_summary":    {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
         "image_processor": {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
         "final_summary":   {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "top_five":       {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
     },
 }
 

@@ -58,37 +58,32 @@ class FolderDOCXDownloadView(APIView):
 
         if not os.path.exists(full_path):
             logger.error(
-                "DOCX directory not found on disk for report #%s: %s",
+                "DOCX file not found on disk for report #%s: %s",
                 pk, full_path,
             )
             return Response(
-                {"detail": "DOCX files not found on disk."},
+                {"detail": "DOCX file not found on disk."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Create a temporary zip file containing all DOCX files
+        # pdf_output_path is a FILE path (not directory), so stream it directly
         temp_dir = tempfile.mkdtemp()
         zip_filename = f"Defect_Pictures_Style_{report.folder_name}.zip"
         zip_path = os.path.join(temp_dir, zip_filename)
 
         try:
+            # Create a zip containing the single DOCX file
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # Walk through the output directory and add all DOCX files
-                for root, dirs, files in os.walk(full_path):
-                    for file in files:
-                        if file.endswith('.docx'):
-                            file_path = os.path.join(root, file)
-                            # Add file to zip with just the filename (not full path)
-                            arcname = os.path.basename(file)
-                            zipf.write(file_path, arcname)
+                arcname = os.path.basename(full_path)
+                zipf.write(full_path, arcname)
 
             # Stream the zip file
             response = FileResponse(
                 open(zip_path, "rb"),
                 content_type="application/zip",
                 as_attachment=True,
-                filename=zip_filename,
             )
+            response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
 
             logger.info(
                 "DOCX download | report #%s | batch #%s | user: %s | file: %s",

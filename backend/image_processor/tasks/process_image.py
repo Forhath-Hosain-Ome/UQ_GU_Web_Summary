@@ -101,8 +101,8 @@ LABEL_TYPES = [
 
 VALID_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp", ".ico"}
 
-IMG_WIDTH_INCHES  = 325 / 96   # ≈ 3.385"
-IMG_HEIGHT_INCHES = 265 / 96   # ≈ 2.760"
+IMG_WIDTH_INCHES  =  3.385
+IMG_HEIGHT_INCHES =  2.760
 
 IMAGES_PER_PAGE = 2
 

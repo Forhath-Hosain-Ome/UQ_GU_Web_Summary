@@ -22,11 +22,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /install /usr/local
 
 # Create non-root user
-RUN useradd -m -u 1001 appuser && \
-    mkdir -p /app/media /app/logs && \
+RUN useradd -m -u 1001 -G root appuser && \
+    mkdir -p /app/media /app/logs /app/media/uploads /app/media/output /tmp/batch_uploads && \
     touch /app/logs/app.log && \
     touch /app/db.sqlite3 && \
-    chown -R appuser:appuser /app/media /app/logs /app/db.sqlite3 /app
+    chown -R appuser:appuser /app/logs /app/db.sqlite3 /app
+
+# Make media and temp directories writable by all users (for uploads)
+RUN chmod -R 777 /app/media /app/media/uploads /app/media/output /tmp/batch_uploads 2>/dev/null || true
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

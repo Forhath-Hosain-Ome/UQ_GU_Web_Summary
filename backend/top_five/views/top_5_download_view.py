@@ -14,7 +14,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from top5.models import Top5Job
+
+from top_five.models import Top5Job
+
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,6 @@ import LoginPage from "./pages/LoginPage";
 import PumaPage  from "./pages/PumaPage";
 import FinalSummaryPage from "./pages/FinalSummaryPage";
 import DefectImagePage from "./pages/DefectImagePage";
-import TopFivePage from "./pages/TopFivePage";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -22,14 +21,6 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/top-five"
-            element={
-              <RequireAuth>
-                <TopFivePage />
-              </RequireAuth>
-            }
-          />
           <Route
             path="/puma"
             element={
