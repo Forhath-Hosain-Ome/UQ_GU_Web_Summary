@@ -27,7 +27,7 @@ export default function TopNav() {
         {SERVICES.map((s) => {
           const active = location.pathname.startsWith(s.path);
           return (
-            <button className={`${styles.custom_button} ${active ? styles.active : styles.inactive}`}
+            <button className={`custom_button ${active ? 'active' : 'inactive'}`}
               key={s.id}
               onClick={() => navigate(s.path)}
             >

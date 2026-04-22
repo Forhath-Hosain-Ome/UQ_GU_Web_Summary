@@ -47,7 +47,7 @@ export default function App() {
             }
           />
           <Route
-            path="/audit"
+            path="/top-five"
             element={
               <RequireAuth>
                 <Top5Page />

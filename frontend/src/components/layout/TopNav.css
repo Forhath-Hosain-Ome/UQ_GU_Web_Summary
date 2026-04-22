@@ -14,12 +14,12 @@
 }
 
 .logo {
-    font-family: "var(--font-display)";
+    font-family: var(--font-display);
     font-weight: 800;
-    font-size: "15px";
-    letter-spacing: "0.12em";
-    color: "var(--color-accent2)";
-    white-space: "nowrap";
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    color: var(--color-accent2);
+    white-space: nowrap;
 }
 
 .custom_button {
@@ -34,7 +34,6 @@
     transition: all 0.15s;
 }
 
-/* Create a separate class for the active state */
 .active {
     background: var(--color-accent);
     color: #fff;
