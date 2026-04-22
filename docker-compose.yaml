@@ -51,6 +51,7 @@ services:
     volumes:
       - ./backend/media:/app/media   # persist uploads
       - ./backend/logs:/app/logs     # persist logs
+      - batch_uploads:/tmp/batch_uploads  # shared temp storage for celery tasks
     env_file:
       - .env                         # secrets stay out of compose file
     environment:
@@ -81,6 +82,7 @@ services:
     volumes:
       - ./backend/media:/app/media
       - ./backend/logs:/app/logs
+      - batch_uploads:/tmp/batch_uploads  # shared temp storage for celery tasks
     env_file:
       - .env
     environment:
@@ -148,6 +150,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  batch_uploads:
+    driver: local
 
 networks:
   app_network:
