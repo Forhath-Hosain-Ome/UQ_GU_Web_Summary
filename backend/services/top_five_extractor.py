@@ -314,8 +314,8 @@ def extract_data(wb, sheet_name):
     col    = EXTRACT_SETTINGS["column_letter"]
     start  = EXTRACT_SETTINGS["min_row"]
     unique_items  = _unique(ws, col, start)
-    data["Item_name"]   = ", ".join(str(i) for i in unique_items)
-    data["Total_audit"] = _count(ws, col, start)
+    data["item_column"]   = ", ".join(str(i) for i in unique_items)
+    data["style_column"] = _count(ws, col, start)
 
     return data
 
