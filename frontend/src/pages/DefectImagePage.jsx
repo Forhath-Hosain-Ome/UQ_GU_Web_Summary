@@ -6,6 +6,7 @@ import OutputPanel from "../components/layout/OutputPanel";
 import { useOutputStore } from "../store/outputStore";
 import { useAuthStore } from "../store/authStore";
 import { fetchBatches, fetchReports } from "../services/defectImageApi";
+import filterByUser from "../utils/FilterByUser"
 
 const IMAGE_SECTIONS = [
   {
@@ -32,16 +33,6 @@ export default function DefectImagePage() {
   const { user } = useAuthStore();
   const { setOutput, setLoading, addLog, clearOutput } = useOutputStore();
   const [activeId, setActiveId] = useState(null);
-
-  // Filter batches/reports to only show items created by the logged-in user
-  const filterByUser = (data) => {
-    const items = data?.results || data || [];
-    const filtered = items.filter(item => item.created_by && item.created_by.id === Number(user?.user_id));
-    if (data?.results) {
-      return { ...data, results: filtered, count: filtered.length };
-    }
-    return filtered;
-  };
 
   const handleSelect = async (ep) => {
     setActiveId(ep.id);
