@@ -44,6 +44,10 @@ export function UploadForm({ initData = {}, source = "puma" }) {
   const serviceUpload = isImageUpload ? uploadBatchImage : uploadBatchPuma;
   const serviceFetchBatch = isImageUpload ? fetchBatchImage : fetchBatchPuma;
 
+  // ✅ Add these two lines
+  const serviceFetchBatchRef = useRef(serviceFetchBatch);
+  useEffect(() => { serviceFetchBatchRef.current = serviceFetchBatch; }, [serviceFetchBatch]);
+
   // Keep store in sync so progress survives remounts
   const syncStore = useCallback((patch) => {
     useOutputStore.setState((s) => ({
@@ -186,7 +190,8 @@ export function UploadForm({ initData = {}, source = "puma" }) {
       setOutput(
         "batch-progress",
         { ...res, batch_id: res.batch_id, progress: initialProgress, source, date, style },
-        `Batch #${res.batch_id}`
+        `Batch #${res.batch_id}`,
+        { source }
       );
       addLog({
         level: "success",
@@ -217,7 +222,7 @@ export function UploadForm({ initData = {}, source = "puma" }) {
       addLog({ level: "success", message: `Batch #${msg.batch_id} complete — ${msg.report_count} report(s) saved` });
       if (msg.failed > 0)
         addLog({ level: "warning", message: `${msg.failed} folder(s) failed in Batch #${msg.batch_id}` });
-      const full = await serviceFetchBatch(msg.batch_id);
+      const full = await serviceFetchBatchRef.current(msg.batch_id);
       setOutput("batch", full, `Batch #${msg.batch_id}`, { source });
       setBatch(null);
     },

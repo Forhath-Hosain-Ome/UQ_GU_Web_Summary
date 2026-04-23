@@ -1,9 +1,12 @@
 import { useAuthStore } from "../../store/authStore";
 import { useNavigate, useLocation } from "react-router-dom";
+import './TopNav.css'
 
 const SERVICES = [
   { id: "puma", label: "PUMA SUMMARY", path: "/puma" },
   { id: "defect_image", label: "Defect Image", path: "/image" },
+  { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
+  { id: "top_five", label: "TOP FIVE", path: "/top-five" },
   // Future services added here
 ];
 
@@ -13,33 +16,9 @@ export default function TopNav() {
   const location  = useLocation();
 
   return (
-    <header
-      style={{
-        background: "var(--color-surface)",
-        borderBottom: "1px solid var(--color-border)",
-        height: "52px",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 24px",
-        gap: "32px",
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-      }}
-    >
+    <header className="header" >
       {/* Logo */}
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 800,
-          fontSize: "15px",
-          letterSpacing: "0.12em",
-          color: "var(--color-accent2)",
-          whiteSpace: "nowrap",
-        }}
-      >
+      <div className="logo" >
         QC<span style={{ color: "var(--color-muted)" }}>/</span>PLATFORM
       </div>
 
@@ -48,22 +27,9 @@ export default function TopNav() {
         {SERVICES.map((s) => {
           const active = location.pathname.startsWith(s.path);
           return (
-            <button
+            <button className={`custom_button ${active ? 'active' : 'inactive'}`}
               key={s.id}
               onClick={() => navigate(s.path)}
-              style={{
-                background: active ? "var(--color-accent)" : "transparent",
-                color: active ? "#fff" : "var(--color-muted)",
-                border: "none",
-                padding: "4px 14px",
-                borderRadius: "4px",
-                fontFamily: "var(--font-mono)",
-                fontSize: "11px",
-                fontWeight: 500,
-                letterSpacing: "0.08em",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
             >
               {s.label}
             </button>

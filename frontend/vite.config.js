@@ -18,7 +18,9 @@ export default defineConfig({
     proxy: {
       "/api": { target: apiTarget, changeOrigin: true },
       "/auth": { target: apiTarget, changeOrigin: true },
+      "/puma": { target: apiTarget, changeOrigin: true },
       "/image": { target: apiTarget, changeOrigin: true },
+      "/final-summary": { target: apiTarget, changeOrigin: true },
       "/ws": { target: wsTarget, ws: true, changeOrigin: true },
     },
   },

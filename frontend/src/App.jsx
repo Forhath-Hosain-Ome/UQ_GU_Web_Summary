@@ -3,7 +3,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./store/authStore";
 import LoginPage from "./pages/LoginPage";
 import PumaPage  from "./pages/PumaPage";
+<<<<<<< HEAD
 import DefectImagePage from "./pages/DefectImagePage";
+=======
+import FinalSummaryPage from "./pages/FinalSummaryPage";
+import DefectImagePage from "./pages/DefectImagePage";
+import Top5Page from "./pages/TopFivePage";
+>>>>>>> feature/final-summary
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -36,6 +42,25 @@ export default function App() {
               </RequireAuth>
             }
           />
+<<<<<<< HEAD
+=======
+          <Route
+            path="/audit"
+            element={
+              <RequireAuth>
+                <FinalSummaryPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/top-five"
+            element={
+              <RequireAuth>
+                <Top5Page />
+              </RequireAuth>
+            }
+          />
+>>>>>>> feature/final-summary
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

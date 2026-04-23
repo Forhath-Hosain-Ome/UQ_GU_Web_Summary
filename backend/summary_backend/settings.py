@@ -1,33 +1,38 @@
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> feature/final-summary
 from pathlib import Path
 from datetime import timedelta
 import os
 import sys
+<<<<<<< HEAD
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+=======
+
+>>>>>>> feature/final-summary
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Allow importing the top-level workspace `analysis` package from backend code.
 WORKSPACE_ROOT = BASE_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
+WORKSPACE_ROOT = BASE_DIR.parent
+if str(WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(WORKSPACE_ROOT))
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
+
 SECRET_KEY = 'django-insecure-bybxt97-yxn5dgy73aljwqk$u41f(af%eiwcx!bj9#$tp2aj%n'
 
-# SECURITY WARNING: don't run with debug turned on in production!
+
 DEBUG = True
 
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     'backend',
-    # Add your production domain here, e.g. 'myapp.example.com'
 ]
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'daphne',
@@ -41,15 +46,21 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
+    'corsheaders',
 
     'puma_summary.apps.PumaSummaryConfig',
     'image_processor.apps.ImageProcessorConfig',
     'final_summary.apps.FinalSummaryConfig',
+<<<<<<< HEAD
+=======
+    'top_five.apps.TopFiveConfig',
+>>>>>>> feature/final-summary
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -61,11 +72,8 @@ ROOT_URLCONF = 'summary_backend.urls'
 
 # ── Django REST Framework ─────────────────────────────────────────────────────
 REST_FRAMEWORK = {
-    # All endpoints require a valid JWT access token by default.
-    # Individual views can override with AllowAny if needed.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
-        
         "rest_framework.authentication.SessionAuthentication",  
         "rest_framework.authentication.BasicAuthentication",    
     ],
@@ -88,15 +96,11 @@ REST_FRAMEWORK = {
 
 # ── Simple JWT ────────────────────────────────────────────────────────────────
 SIMPLE_JWT = {
-    # Access token expires in 1 hour — user must use refresh token to renew.
-    # Refresh token expires in 1 day — re-login required every 24 hours.
     "ACCESS_TOKEN_LIFETIME":  timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
  
-    "ROTATE_REFRESH_TOKENS":    True,   # issue a new refresh token on every refresh
-    "BLACKLIST_AFTER_ROTATION": True,   # invalidate old refresh token immediately
-                                        # requires 'rest_framework_simplejwt.token_blacklist'
-                                        # in INSTALLED_APPS + migration
+    "ROTATE_REFRESH_TOKENS":    True,   
+    "BLACKLIST_AFTER_ROTATION": True,
  
     "ALGORITHM":              "HS256",
     "AUTH_HEADER_TYPES":      ("Bearer",),
@@ -127,11 +131,17 @@ CHANNEL_LAYERS = {
 # ── CORS (React dev server) ────────────────────────────────────────────────────
 # Allow the React dev server to call the API without CORS errors.
 # In production, replace with your actual frontend domain.
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # Vite default
-    "http://localhost:3000",   # CRA default
-    os.getenv('DJANGO_ALLOWED_HOST', '')
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",   # Vite default
+#     "http://localhost:3000",   # CRA default
+# ]
+
+# extra_host = os.getenv('DJANGO_ALLOWED_HOST')
+# if extra_host:
+#     CORS_ALLOWED_ORIGINS.append(extra_host)
+ALLOWED_HOSTS = ['*']
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow credentials (cookies, authorization headers) for cross-origin requests
 CORS_ALLOW_CREDENTIALS = True
@@ -172,8 +182,12 @@ WSGI_APPLICATION = 'summary_backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'summary_db'),
+        'USER': os.getenv('POSTGRES_USER', 'postgres'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
+        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),
+        'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
 }
 
@@ -182,18 +196,10 @@ DATABASES = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
 
@@ -228,32 +234,56 @@ TEMPLATE_ROOT = MEDIA_ROOT / "templates"
 # Log files
 
 LOG_DIR = BASE_DIR / "logs"
-LOG_FILE = LOG_DIR / "app.log"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+
+class AppUserDateHandler(logging.Handler):
+    """Routes logs to logs/<app>/<username>/<date>.log"""
+    def emit(self, record):
+        try:
+            from datetime import date
+            app      = getattr(record, 'app', record.name.split('.')[0])
+            username = getattr(record, 'username', 'system')
+            day      = date.today().strftime('%Y-%m-%d')
+
+            log_path = LOG_DIR / app / username
+            log_path.mkdir(parents=True, exist_ok=True)
+
+            file_path = log_path / f"{day}.log"
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(self.format(record) + '\n')
+        except Exception:
+            # Fallback to stderr if file logging fails (e.g., permission issues)
+            import sys
+            print(self.format(record), file=sys.stderr)
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-
-    "handlers": {
-        "file": {
-            "level": "INFO",
-            "class": "logging.FileHandler",
-            "filename": LOG_FILE,
+    "formatters": {
+        "standard": {
+            "format": "{asctime} [{levelname}] {name}: {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
-
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "app_user_date": {
+            "()": AppUserDateHandler,
+            "formatter": "standard",
+        },
+    },
     "loggers": {
-        "puma_summary": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": True,
-        },
-        "pdf": {
-            "handlers": ["file"],
-            "level": "INFO",
-            "propagate": True,
-        },
+        "puma_summary":    {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "image_processor": {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "final_summary":   {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+        "top_five":       {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
     },
 }
 
@@ -271,6 +301,14 @@ IMAGE_PROCESSOR_SETTINGS = {
     "DEFECT_DOCX":        BASE_DIR / "media/output/defect_image/defect_docx",
 }
 
+<<<<<<< HEAD
+=======
+TOP_FIVE_SETTINGS = {
+    "TOP_FIVE_TEMPLATE_PATH": TEMPLATE_ROOT / "template.xlsx",
+    "OUTPUT_DIR" :        BASE_DIR / "media/output/top_five",
+}
+
+>>>>>>> feature/final-summary
 # Celery Setup
 
 
@@ -283,4 +321,9 @@ CELERY_TASK_ROUTES = {
     'puma_summary.process_inspection_batch': {'queue': 'celery'},
     'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
     'image_processor.process_defect_docx':   {'queue': 'celery'},
+<<<<<<< HEAD
+=======
+    'final_summary.process_audit_upload':    {'queue': 'celery'},
+    'top_five.run_top5_job':                 {'queue': 'celery'},
+>>>>>>> feature/final-summary
 }

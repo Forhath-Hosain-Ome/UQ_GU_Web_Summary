@@ -9,6 +9,10 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+<<<<<<< HEAD
+=======
+from django.db import transaction
+>>>>>>> feature/final-summary
 
 from image_processor.serializers import FolderUploadSerializer
 from image_processor.models import FolderBatch
@@ -62,8 +66,13 @@ class FolderUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+<<<<<<< HEAD
         media_root = Path(settings.MEDIA_ROOT)
         upload_base = media_root / "uploads" / "batch_uploads"
+=======
+        # Use /tmp instead of mounted media volume (which may have host permissions)
+        upload_base = Path("/tmp") / "batch_uploads"
+>>>>>>> feature/final-summary
         upload_base.mkdir(parents=True, exist_ok=True)
         temp_dir = str(upload_base / str(uuid.uuid4()))
 
@@ -111,6 +120,7 @@ class FolderUploadView(APIView):
             )
 
             # ── Fire Celery task ──────────────────────────────────────────
+<<<<<<< HEAD
             task = process_folder_task.delay(batch.id, temp_dir, date)
 
             # FIX: Save celery_task_id so it's visible in admin / API
@@ -122,6 +132,24 @@ class FolderUploadView(APIView):
                 "Folder upload | batch #%s | user: %s | folders: %s | task: %s",
                 batch.id, request.user.username, folders, task.id,
             )
+=======
+            
+            task_id = None
+
+            def on_commit_callback():
+                nonlocal task_id
+                result = process_folder_task.delay(batch.id, temp_dir, date)
+                batch.celery_task_id = result.id
+                batch.save(update_fields=["celery_task_id"])
+                logger.info(
+                    "Folder upload | batch #%s | user: %s | folders: %s | task: %s",
+                    batch.id, request.user.username, folders, result.id,
+                )
+
+            transaction.on_commit(on_commit_callback)
+
+           
+>>>>>>> feature/final-summary
 
             return Response(
                 {

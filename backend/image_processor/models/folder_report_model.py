@@ -1,4 +1,8 @@
 from django.db import models
+<<<<<<< HEAD
+=======
+from django.contrib.auth.models import User
+>>>>>>> feature/final-summary
 from .folder_batch_model import FolderBatch
 from shared.models import BaseModel
 from django.utils import timezone
@@ -13,6 +17,14 @@ class FolderReport(BaseModel):
         FolderBatch, on_delete=models.CASCADE, related_name="reports"
     )
 
+<<<<<<< HEAD
+=======
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="folder_reports",
+    )
+
+>>>>>>> feature/final-summary
     # Which folder this came from (relative path)
     folder_name = models.CharField(max_length=512)
 
@@ -48,6 +60,10 @@ class FolderReport(BaseModel):
         return f"{self.folder_name} | {self.status} | Batch #{self.batch_id}"
 
     @property
+<<<<<<< HEAD
     def created_by(self):
+=======
+    def created_by_user(self):
+>>>>>>> feature/final-summary
         """Convenience accessor — delegates to the parent batch."""
         return self.batch.created_by

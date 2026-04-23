@@ -1,20 +1,25 @@
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
 COPY package*.json ./
-
-RUN npm ci
+RUN npm ci --frozen-lockfile
 
 COPY . .
 
-FROM node:20-alpine
+# Build static assets for production
+RUN npm run build
 
-WORKDIR /app
+# ── Runtime stage (Nginx serves built assets) ──────────────────
+FROM nginx:1.27-alpine
+WORKDIR /usr/share/nginx/html
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app .
+# Remove default nginx content
+RUN rm -rf ./*
 
-EXPOSE 5173
+COPY --from=builder /app/dist .
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+# CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
