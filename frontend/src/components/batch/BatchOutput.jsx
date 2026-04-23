@@ -32,6 +32,7 @@ export function UploadForm({ initData = {}, source = "puma" }) {
   const [files, setFiles]       = useState([]);
   const [date, setDate]         = useState(initData.date || new Date().toISOString().slice(0, 10));
   const [style, setStyle]       = useState(initData.style || "");
+  const [isRenamedFile, setIsRenamedFile] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [batchId, setBatch]     = useState(initData.batch_id ?? null);
   const [progress, setProgress] = useState(initData.progress ?? null);
@@ -178,7 +179,7 @@ export function UploadForm({ initData = {}, source = "puma" }) {
       if (isImageUpload) {
         // Extract relative paths from webkitRelativePath, falling back to filename
         const paths = files.map((f) => f.webkitRelativePath || f.name);
-        res = await serviceUpload(files, paths, date, style);
+        res = await serviceUpload(files, paths, date, style, isRenamedFile);
       } else {
         res = await serviceUpload(files);
       }
@@ -329,9 +330,9 @@ export function UploadForm({ initData = {}, source = "puma" }) {
         </div>
       </div>
 
-      {/* Date + Style inputs for image mode */}
+      {/* Date + Rename File Checkbox + Style inputs for image mode */}
       {isImageUpload && (
-        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-start" }}>
           <label style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)", display: "flex", flexDirection: "column", gap: "6px" }}>
             Inspection Date
             <input
@@ -340,6 +341,17 @@ export function UploadForm({ initData = {}, source = "puma" }) {
               onChange={(e) => setDate(e.target.value)}
               style={inputStyle}
             />
+          </label>
+          <label style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)", display: "flex", flexDirection: "column", gap: "6px", cursor: "pointer" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <input
+                type="checkbox"
+                checked={isRenamedFile}
+                onChange={(e) => setIsRenamedFile(e.target.checked)}
+                style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px", marginTop: "2px" }}
+              />
+              Show File Names in DOCX
+            </span>
           </label>
           <label style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)", display: "flex", flexDirection: "column", gap: "6px" }}>
             Style Name (optional)

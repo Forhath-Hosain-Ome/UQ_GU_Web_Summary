@@ -20,6 +20,7 @@ from django.conf import settings
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from docx.shared import Inches, Pt, RGBColor
 from PIL import Image
 
@@ -262,6 +263,7 @@ def _add_label_paragraph(
     font_size_pt: int = 11,
     color_hex: str = "000000",
     bold: bool = False,
+    highlight_color: Optional[str] = None,
 ) -> None:
     para = doc.add_paragraph()
     run = para.add_run(text)
@@ -269,6 +271,13 @@ def _add_label_paragraph(
     run.font.size = Pt(font_size_pt)
     run.font.bold = bold
     run.font.color.rgb = RGBColor.from_string(color_hex)
+
+    if highlight_color:
+        # Add text highlight color via XML
+        rPr = run._element.get_or_add_rPr()
+        highlight = OxmlElement('w:highlight')
+        highlight.set(qn('w:val'), highlight_color)
+        rPr.append(highlight)
 
 
 def _add_image_paragraph(doc: Document, image_path: str) -> None:
@@ -333,20 +342,22 @@ def _generate_docx(
             if mode == "named":
                 _add_label_paragraph(
                     doc, stem,
-                    font_name    = label_style.get("font_name",    "Verdana"),
-                    font_size_pt = label_style.get("font_size_pt", 11),
-                    color_hex    = label_style.get("color_hex",    "000000"),
-                    bold         = label_style.get("bold",         False),
+                    font_name        = label_style.get("font_name",    "Verdana"),
+                    font_size_pt     = label_style.get("font_size_pt", 11),
+                    color_hex        = label_style.get("color_hex",    "000000"),
+                    bold             = label_style.get("bold",         False),
+                    highlight_color  = label_style.get("highlight_color"),
                 )
             elif mode == "translated":
                 translated = translations.get(stem, "")
                 label_text = f"{stem} / {translated}" if translated else stem
                 _add_label_paragraph(
                     doc, label_text,
-                    font_name    = label_style.get("font_name",    "Verdana"),
-                    font_size_pt = label_style.get("font_size_pt", 11),
-                    color_hex    = label_style.get("color_hex",    "000000"),
-                    bold         = label_style.get("bold",         False),
+                    font_name        = label_style.get("font_name",    "Verdana"),
+                    font_size_pt     = label_style.get("font_size_pt", 11),
+                    color_hex        = label_style.get("color_hex",    "000000"),
+                    bold             = label_style.get("bold",         False),
+                    highlight_color  = label_style.get("highlight_color"),
                 )
 
             _add_image_paragraph(doc, img_path)
@@ -404,6 +415,7 @@ def process_defect_docx_task(
     batch_id: int,
     source_folder: str,
     date: str = "",
+    is_renamed_file: bool = False,
     label_type: str = "Defect_GMTS_pictures_report_for_Style",
     mode: str = "basic",
     label_style: Optional[dict] = None,
@@ -463,6 +475,17 @@ def process_defect_docx_task(
         batch.save(update_fields=["total_folders"])
 
     try:
+        # Determine effective mode and label_style based on is_renamed_file flag
+        effective_mode = mode
+        effective_label_style = dict(label_style) if label_style else {}
+        if is_renamed_file:
+            effective_mode = "named"
+            effective_label_style.update({
+                "color_hex": "FFFFFF",
+                "font_size_pt": 14,
+                "highlight_color": "red",
+            })
+
         for folder_path in folders:
             folder_name = folder_path.name
             folder_extract_dir = folder_path
@@ -527,7 +550,7 @@ def process_defect_docx_task(
 
                 # ── Build translations if needed ──────────────────────────
                 translations: dict[str, str] = {}
-                if mode == "translated" and use_translation:
+                if effective_mode == "translated" and use_translation:
                     stems = [Path(p).stem for p in prepared]
                     translations = _translate_names(stems, translation_language)
 
@@ -544,8 +567,8 @@ def process_defect_docx_task(
                     label_type       = label_type,
                     image_paths      = prepared,
                     output_docx_path = docx_output_path,
-                    mode             = mode,
-                    label_style      = label_style,
+                    mode             = effective_mode,
+                    label_style      = effective_label_style,
                     translations     = translations,
                 )
 
