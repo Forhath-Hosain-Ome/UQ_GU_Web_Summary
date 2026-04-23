@@ -502,7 +502,21 @@ function RetryStage({ lastBatchId, onRetryComplete }) {
 
   // Download the error JSON as a file so user can edit offline
   const handleDownloadJson = () => {
-    if (!errorData) return;
+    if (!errorData) {
+      console.error("No errorData");
+      return;
+    }
+    const safeStringify = (obj) => {
+      const seen = new WeakSet();
+      return JSON.stringify(obj, (key, value) => {
+        if (typeof value === "object" && value !== null) {
+          if (seen.has(value)) return "[Circular]";
+          seen.add(value);
+        }
+        return value;
+      }, 2);
+    };
+    
     const blob = new Blob([JSON.stringify(errorData, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
