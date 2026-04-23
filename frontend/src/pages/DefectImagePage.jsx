@@ -36,7 +36,7 @@ export default function DefectImagePage() {
   // Filter batches/reports to only show items created by the logged-in user
   const filterByUser = (data) => {
     const items = data?.results || data || [];
-    const filtered = items.filter(item => item.created_by && item.created_by.id === user?.user_id);
+    const filtered = items.filter(item => item.created_by && item.created_by.id === Number(user?.user_id));
     if (data?.results) {
       return { ...data, results: filtered, count: filtered.length };
     }
@@ -57,7 +57,7 @@ export default function DefectImagePage() {
         setLoading(true);
         addLog({ level: "info", message: "Fetching batch list…" });
         try {
-          const data = await fetchBatches();
+          const data = await fetchBatches({ _t: Date.now() });
           const filtered = filterByUser(data);
           setOutput("batch-list", filtered, "All Batches", { action: "view", source: "image" });
           addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
@@ -66,7 +66,7 @@ export default function DefectImagePage() {
           setLoading(false);
         }
         break;
-
+      
       case "report-list":
         setLoading(true);
         addLog({ level: "info", message: "Fetching reports…" });

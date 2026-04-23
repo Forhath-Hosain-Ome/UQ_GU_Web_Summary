@@ -24,7 +24,7 @@ export const attachInterceptors = (instance) => {
         if (refresh) {
           try {
             const { data } = await instance.post(
-              "auth/token/refresh/",
+              "/auth/token/refresh/",
               { refresh }
             );
 
