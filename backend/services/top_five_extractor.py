@@ -7,263 +7,292 @@ Works entirely in-memory — accepts an openpyxl workbook, returns a BytesIO buf
 """
 import io
 import openpyxl
+from utils import _count, _unique
 
 # ── mapping (was mapping.json) ────────────────────────────────────────────────
 
 EXTRACT_SETTINGS = {
     "min_row": 12,
-    "column_letter": "L",
+    "item_column": "L",
+    "style_column": "M",
 }
 
 MAPPINGS = {
     "100%": {
         "cells": {
-            "Shipping":           "T4",
-            "Audit":              "U4",
+            "Total_audit":        _count("100%", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            "Item_name":          _unique("100%", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+
+            "Check":              "T4",
+            "Pass":               "U4",
             "Defect":             "W4",
             "Percent":            "X4",
-            "defect_catagory_1":  "L6",
-            "defect_catagory_2":  "L7",
-            "defect_catagory_3":  "L8",
-            "defect_catagory_4":  "L9",
-            "defect_catagory_5":  "L10",
-            "defect_item_1":      "M6",
-            "defect_item_2":      "M7",
-            "defect_item_3":      "M8",
-            "defect_item_4":      "M9",
-            "defect_item_5":      "M10",
+
+            "defect_catagory_1":  "K6",
+            "defect_catagory_2":  "K7",
+            "defect_catagory_3":  "K8",
+            "defect_catagory_4":  "K9",
+            "defect_catagory_5":  "K10",
+
+            "defect_item_1":      "L6",
+            "defect_item_2":      "L7",
+            "defect_item_3":      "L8",
+            "defect_item_4":      "L9",
+            "defect_item_5":      "L10",
+
+            "defect_qty_1":       "M6",
+            "defect_qty_2":       "M7",
+            "defect_qty_3":       "M8",
+            "defect_qty_4":       "M9",
+            "defect_qty_5":       "M10",
+
             "defect_percent_1":   "N6",
             "defect_percent_2":   "N7",
             "defect_percent_3":   "N8",
             "defect_percent_4":   "N9",
             "defect_percent_5":   "N10",
-            "defect_qty_1":       "O6",
-            "defect_qty_2":       "O7",
-            "defect_qty_3":       "O8",
-            "defect_qty_4":       "O9",
-            "defect_qty_5":       "O10",
         },
         "template_targets": {
-            "Total_audit":        "C17",
-            "Item_name":          "B18",
-            "Shipping":           "E17",
-            "Audit":              "H17",
-            "Defect":             "K17",
-            "Percent":            "M17",
-            "defect_catagory_1":  "C20",
-            "defect_catagory_2":  "C21",
-            "defect_catagory_3":  "C22",
-            "defect_catagory_4":  "C23",
-            "defect_catagory_5":  "C24",
-            "defect_item_1":      "D20",
-            "defect_item_2":      "D21",
-            "defect_item_3":      "D22",
-            "defect_item_4":      "D23",
-            "defect_item_5":      "D24",
-            "defect_percent_1":   "E20",
-            "defect_percent_2":   "E21",
-            "defect_percent_3":   "E22",
-            "defect_percent_4":   "E23",
-            "defect_percent_5":   "E24",
-            "defect_qty_1":       "F20",
-            "defect_qty_2":       "F21",
-            "defect_qty_3":       "F22",
-            "defect_qty_4":       "F23",
-            "defect_qty_5":       "F24",
+            "Total_audit":        "C4",
+            "Item_name":          "B5",
+
+            "Check":              "E4",
+            "Pass":               "H4",
+            "Defect":             "K4",
+            "Percent":            "M4",
+
+            "defect_catagory_1":  "C10",
+            "defect_catagory_2":  "C11",
+            "defect_catagory_3":  "C12",
+            "defect_catagory_4":  "C13",
+            "defect_catagory_5":  "C14",
+
+            "defect_item_1":      "D10",
+            "defect_item_2":      "D11",
+            "defect_item_3":      "D12",
+            "defect_item_4":      "D13",
+            "defect_item_5":      "D14",
+
+            "defect_qty_1":       "E10",
+            "defect_qty_2":       "E11",
+            "defect_qty_3":       "E12",
+            "defect_qty_4":       "E13",
+            "defect_qty_5":       "E14",
+
+            "defect_percent_1":   "F10",
+            "defect_percent_2":   "F11",
+            "defect_percent_3":   "F12",
+            "defect_percent_4":   "F13",
+            "defect_percent_5":   "F14",            
         },
     },
     
     "Final": {
         "cells": {
+            "Total_audit":        _count("Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            "Item_name":          _unique("Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+
             "Shipping":           "T4",
             "Audit":              "U4",
             "Defect":             "W4",
             "Percent":            "X4",
-            "defect_catagory_1":  "L6",
-            "defect_catagory_2":  "L7",
-            "defect_catagory_3":  "L8",
-            "defect_catagory_4":  "L9",
-            "defect_catagory_5":  "L10",
-            "defect_item_1":      "M6",
-            "defect_item_2":      "M7",
-            "defect_item_3":      "M8",
-            "defect_item_4":      "M9",
-            "defect_item_5":      "M10",
+
+            "defect_catagory_1":  "K6",
+            "defect_catagory_2":  "K7",
+            "defect_catagory_3":  "K8",
+            "defect_catagory_4":  "K9",
+            "defect_catagory_5":  "K10",
+
+            "defect_item_1":      "L6",
+            "defect_item_2":      "L7",
+            "defect_item_3":      "L8",
+            "defect_item_4":      "L9",
+            "defect_item_5":      "L10",
+
+            "defect_qty_1":       "M6",
+            "defect_qty_2":       "M7",
+            "defect_qty_3":       "M8",
+            "defect_qty_4":       "M9",
+            "defect_qty_5":       "M10",
+
             "defect_percent_1":   "N6",
             "defect_percent_2":   "N7",
             "defect_percent_3":   "N8",
             "defect_percent_4":   "N9",
             "defect_percent_5":   "N10",
-            "defect_qty_1":       "O6",
-            "defect_qty_2":       "O7",
-            "defect_qty_3":       "O8",
-            "defect_qty_4":       "O9",
-            "defect_qty_5":       "O10",
         },
         "template_targets": {
             "Total_audit":        "C17",
             "Item_name":          "B18",
+
             "Shipping":           "E17",
             "Audit":              "H17",
             "Defect":             "K17",
             "Percent":            "M17",
+
             "defect_catagory_1":  "C20",
             "defect_catagory_2":  "C21",
             "defect_catagory_3":  "C22",
             "defect_catagory_4":  "C23",
             "defect_catagory_5":  "C24",
+
             "defect_item_1":      "D20",
             "defect_item_2":      "D21",
             "defect_item_3":      "D22",
             "defect_item_4":      "D23",
             "defect_item_5":      "D24",
-            "defect_percent_1":   "E20",
-            "defect_percent_2":   "E21",
-            "defect_percent_3":   "E22",
-            "defect_percent_4":   "E23",
-            "defect_percent_5":   "E24",
-            "defect_qty_1":       "F20",
-            "defect_qty_2":       "F21",
-            "defect_qty_3":       "F22",
-            "defect_qty_4":       "F23",
-            "defect_qty_5":       "F24",
+
+            "defect_qty_1":       "E20",
+            "defect_qty_2":       "E21",
+            "defect_qty_3":       "E22",
+            "defect_qty_4":       "E23",
+            "defect_qty_5":       "E24",
+
+            "defect_percent_1":   "F20",
+            "defect_percent_2":   "F21",
+            "defect_percent_3":   "F22",
+            "defect_percent_4":   "F23",
+            "defect_percent_5":   "F24",
+            
         },
     },
     
     "Final-100%": {
         "cells": {
+            "Total_audit":        _count("Final-100%", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            "Item_name":          _unique("Final-100%", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+            
             "Shipping":           "T4",
             "Audit":              "U4",
             "Defect":             "W4",
             "Percent":            "X4",
-            "defect_catagory_1":  "L6",
-            "defect_catagory_2":  "L7",
-            "defect_catagory_3":  "L8",
-            "defect_catagory_4":  "L9",
-            "defect_catagory_5":  "L10",
-            "defect_item_1":      "M6",
-            "defect_item_2":      "M7",
-            "defect_item_3":      "M8",
-            "defect_item_4":      "M9",
-            "defect_item_5":      "M10",
+
+            "defect_catagory_1":  "K6",
+            "defect_catagory_2":  "K7",
+            "defect_catagory_3":  "K8",
+            "defect_catagory_4":  "K9",
+            "defect_catagory_5":  "K10",
+
+            "defect_item_1":      "L6",
+            "defect_item_2":      "L7",
+            "defect_item_3":      "L8",
+            "defect_item_4":      "L9",
+            "defect_item_5":      "L10",
+
+            "defect_qty_1":       "M6",
+            "defect_qty_2":       "M7",
+            "defect_qty_3":       "M8",
+            "defect_qty_4":       "M9",
+            "defect_qty_5":       "M10",
+
             "defect_percent_1":   "N6",
             "defect_percent_2":   "N7",
             "defect_percent_3":   "N8",
             "defect_percent_4":   "N9",
             "defect_percent_5":   "N10",
-            "defect_qty_1":       "O6",
-            "defect_qty_2":       "O7",
-            "defect_qty_3":       "O8",
-            "defect_qty_4":       "O9",
-            "defect_qty_5":       "O10",
         },
         "template_targets": {
-            "Total_audit":        "C17",
-            "Item_name":          "B18",
-            "Shipping":           "E17",
-            "Audit":              "H17",
-            "Defect":             "K17",
-            "Percent":            "M17",
-            "defect_catagory_1":  "C20",
-            "defect_catagory_2":  "C21",
-            "defect_catagory_3":  "C22",
-            "defect_catagory_4":  "C23",
-            "defect_catagory_5":  "C24",
-            "defect_item_1":      "D20",
-            "defect_item_2":      "D21",
-            "defect_item_3":      "D22",
-            "defect_item_4":      "D23",
-            "defect_item_5":      "D24",
-            "defect_percent_1":   "E20",
-            "defect_percent_2":   "E21",
-            "defect_percent_3":   "E22",
-            "defect_percent_4":   "E23",
-            "defect_percent_5":   "E24",
-            "defect_qty_1":       "F20",
-            "defect_qty_2":       "F21",
-            "defect_qty_3":       "F22",
-            "defect_qty_4":       "F23",
-            "defect_qty_5":       "F24",
+            "Total_audit":        "C27",
+            "Item_name":          "B28",
+            "Shipping":           "E27",
+            "Audit":              "H27",
+            "Defect":             "K27",
+            "Percent":            "M27",
+
+            "defect_catagory_1":  "C30",
+            "defect_catagory_2":  "C31",
+            "defect_catagory_3":  "C32",
+            "defect_catagory_4":  "C33",
+            "defect_catagory_5":  "C34",
+
+            "defect_item_1":      "D30",
+            "defect_item_2":      "D31",
+            "defect_item_3":      "D32",
+            "defect_item_4":      "D33",
+            "defect_item_5":      "D34",
+
+            "defect_percent_1":   "E30",
+            "defect_percent_2":   "E31",
+            "defect_percent_3":   "E32",
+            "defect_percent_4":   "E33",
+            "defect_percent_5":   "E34",
+
+            "defect_qty_1":       "F30",
+            "defect_qty_2":       "F31",
+            "defect_qty_3":       "F32",
+            "defect_qty_4":       "F33",
+            "defect_qty_5":       "F34",
         },
     },
 
     "Re-Final": {
         "cells": {
+            "Total_audit":        _count("Re-Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            "Item_name":          _unique("Re-Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+
             "Shipping":           "T4",
             "Audit":              "U4",
-            "defect_catagory_1":  "L6",
-            "defect_catagory_2":  "L7",
-            "defect_catagory_3":  "L8",
-            "defect_catagory_4":  "L9",
-            "defect_catagory_5":  "L10",
-            "defect_item_1":      "M6",
-            "defect_item_2":      "M7",
-            "defect_item_3":      "M8",
-            "defect_item_4":      "M9",
-            "defect_item_5":      "M10",
+            "Defect":             "W4",
+            "Percent":            "X4",
+
+            "defect_catagory_1":  "K6",
+            "defect_catagory_2":  "K7",
+            "defect_catagory_3":  "K8",
+            "defect_catagory_4":  "K9",
+            "defect_catagory_5":  "K10",
+
+            "defect_item_1":      "L6",
+            "defect_item_2":      "L7",
+            "defect_item_3":      "L8",
+            "defect_item_4":      "L9",
+            "defect_item_5":      "L10",
+
+            "defect_qty_1":       "M6",
+            "defect_qty_2":       "M7",
+            "defect_qty_3":       "M8",
+            "defect_qty_4":       "M9",
+            "defect_qty_5":       "M10",
+
             "defect_percent_1":   "N6",
             "defect_percent_2":   "N7",
             "defect_percent_3":   "N8",
             "defect_percent_4":   "N9",
             "defect_percent_5":   "N10",
-            "defect_qty_1":       "O6",
-            "defect_qty_2":       "O7",
-            "defect_qty_3":       "O8",
-            "defect_qty_4":       "O9",
-            "defect_qty_5":       "O10",
         },
-        # Re-Final writes to same template targets as Final
-        # (original code always used 'Final' mapping_key for template_targets)
         "template_targets": {
-            "Total_audit":        "C17",
-            "Item_name":          "B18",
-            "Shipping":           "E17",
-            "Audit":              "H17",
-            "defect_catagory_1":  "C20",
-            "defect_catagory_2":  "C21",
-            "defect_catagory_3":  "C22",
-            "defect_catagory_4":  "C23",
-            "defect_catagory_5":  "C24",
-            "defect_item_1":      "D20",
-            "defect_item_2":      "D21",
-            "defect_item_3":      "D22",
-            "defect_item_4":      "D23",
-            "defect_item_5":      "D24",
-            "defect_percent_1":   "E20",
-            "defect_percent_2":   "E21",
-            "defect_percent_3":   "E22",
-            "defect_percent_4":   "E23",
-            "defect_percent_5":   "E24",
-            "defect_qty_1":       "F20",
-            "defect_qty_2":       "F21",
-            "defect_qty_3":       "F22",
-            "defect_qty_4":       "F23",
-            "defect_qty_5":       "F24",
+            "Total_audit":        "C37",
+            "Item_name":          "B38",
+            "Shipping":           "E37",
+            "Audit":              "H37",
+            "Defect":             "K37",
+            "Percent":            "M37",
+
+            "defect_catagory_1":  "C40",
+            "defect_catagory_2":  "C41",
+            "defect_catagory_3":  "C42",
+            "defect_catagory_4":  "C43",
+            "defect_catagory_5":  "C44",
+
+            "defect_item_1":      "D40",
+            "defect_item_2":      "D41",
+            "defect_item_3":      "D42",
+            "defect_item_4":      "D43",
+            "defect_item_5":      "D44",
+
+            "defect_percent_1":   "E40",
+            "defect_percent_2":   "E41",
+            "defect_percent_3":   "E42",
+            "defect_percent_4":   "E43",
+            "defect_percent_5":   "E44",
+
+            "defect_qty_1":       "F40",
+            "defect_qty_2":       "F41",
+            "defect_qty_3":       "F42",
+            "defect_qty_4":       "F43",
+            "defect_qty_5":       "F44",
         },
     },
 }
-
-
-# ── helpers (was count.py / unique.py) ────────────────────────────────────────
-
-def _count(ws, column_letter, min_row):
-    """Count non-empty cells in a column from min_row downward."""
-    col_idx = openpyxl.utils.column_index_from_string(column_letter)
-    total = 0
-    for (cell,) in ws.iter_rows(min_row=min_row, min_col=col_idx, max_col=col_idx):
-        if cell.value is not None:
-            total += 1
-    return total
-
-
-def _unique(ws, column_letter, min_row):
-    """Return unique non-empty values from a column starting at min_row."""
-    col_idx = openpyxl.utils.column_index_from_string(column_letter)
-    seen = set()
-    for (cell,) in ws.iter_rows(min_row=min_row, min_col=col_idx, max_col=col_idx):
-        if cell.value is not None:
-            seen.add(cell.value)
-    return list(seen)
 
 
 # ── main extract ──────────────────────────────────────────────────────────────
