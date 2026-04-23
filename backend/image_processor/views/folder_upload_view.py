@@ -52,13 +52,14 @@ class FolderUploadView(APIView):
         paths = request.POST.getlist("paths") or request.POST.getlist("paths[]")
         date  = request.POST.get("date", "").strip()
         style = request.POST.get("style", "").strip()
+        is_renamed_file = request.POST.get("is_renamed_file") == "true"
 
         # Normalise path separators
         paths = [p.replace("\\", "/") for p in paths]
 
         # Validate via serializer
         serializer = FolderUploadSerializer(
-            data={"files": files, "paths": paths, "style": style}
+            data={"files": files, "paths": paths, "style": style, "is_renamed_file": is_renamed_file}
         )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -117,7 +118,9 @@ class FolderUploadView(APIView):
 
             def on_commit_callback():
                 nonlocal task_id
-                result = process_folder_task.delay(batch.id, temp_dir, date)
+                result = process_folder_task.delay(
+                    batch.id, temp_dir, date, is_renamed_file=is_renamed_file
+                )
                 batch.celery_task_id = result.id
                 batch.save(update_fields=["celery_task_id"])
                 logger.info(
