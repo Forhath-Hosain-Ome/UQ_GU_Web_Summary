@@ -18,8 +18,8 @@ class ReportDetailView(generics.RetrieveAPIView):
     serializer_class   = InspectionReportSerializer
 
     def get_queryset(self):
-        return (
-            InspectionReport.objects
-            .select_related("batch")
-            .prefetch_related("po_numbers", "certificate_logs")
-        )
+        qs = InspectionReport.objects.select_related("batch").prefetch_related("po_numbers", "certificate_logs")
+        user = self.request.user
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        return qs

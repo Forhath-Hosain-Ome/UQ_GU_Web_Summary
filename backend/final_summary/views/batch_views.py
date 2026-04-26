@@ -14,12 +14,11 @@ class AuditBatchListView(generics.ListAPIView):
     serializer_class   = UploadBatchListSerializer
 
     def get_queryset(self):
-        return (
-            UploadBatch.objects
-            .filter(created_by=self.request.user)
-            .prefetch_related("reports")
-            .order_by("-created_at")
-        )
+        user = self.request.user
+        qs = UploadBatch.objects.all().select_related("created_by").prefetch_related("reports")
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        return qs.order_by("-created_at")
 
 
 class AuditBatchDetailView(generics.RetrieveAPIView):
@@ -28,8 +27,8 @@ class AuditBatchDetailView(generics.RetrieveAPIView):
     serializer_class   = UploadBatchDetailSerializer
 
     def get_queryset(self):
-        return (
-            UploadBatch.objects
-            .filter(created_by=self.request.user)
-            .prefetch_related("reports")
-        )
+        user = self.request.user
+        qs = UploadBatch.objects.all().select_related("created_by").prefetch_related("reports")
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        return qs

@@ -26,8 +26,12 @@ class ExcelDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        user = request.user
         try:
-            batch = InspectionBatch.objects.get(pk=pk)
+            qs = InspectionBatch.objects.all()
+            if not user.is_staff:
+                qs = qs.filter(created_by=user)
+            batch = qs.get(pk=pk)
         except InspectionBatch.DoesNotExist:
             return Response({"detail": "Batch not found."}, status=status.HTTP_404_NOT_FOUND)
 
