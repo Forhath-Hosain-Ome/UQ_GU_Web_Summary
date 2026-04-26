@@ -15,7 +15,7 @@ VALID_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.we
 class FolderUploadSerializer(serializers.Serializer):
     """
     Validates both the files and their relative directory paths.
-    
+
     Usage in view:
         data = {
             "files": request.FILES.getlist("files"),
@@ -48,6 +48,12 @@ class FolderUploadSerializer(serializers.Serializer):
         required=False,
         default="",
         help_text="Custom style name for the uploaded batch"
+    )
+    # Optional flag to show file names with red styling in DOCX
+    is_renamed_file = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="If true, file names are shown before images with red background and red text"
     )
 
     def validate(self, data):

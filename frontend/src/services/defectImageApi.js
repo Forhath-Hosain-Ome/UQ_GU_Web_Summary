@@ -40,12 +40,13 @@ export const fetchBatches = (params) =>
 export const fetchBatch = (pk) =>
   image_api.get(`folder/batches/${pk}/`).then((r) => normalizeBatch(r.data));
 
-export const uploadBatch = (files, paths = [], date = null, style = "") => {
+export const uploadBatch = (files, paths = [], date = null, style = "", isRenamedFile = false) => {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
   paths.forEach((path) => fd.append("paths", path));
   if (date) fd.append("date", date);
   if (style) fd.append("style", style);
+  if (isRenamedFile) fd.append("is_renamed_file", "true");
   return image_api.post("folder/upload/", fd).then((r) => r.data);
 };
 

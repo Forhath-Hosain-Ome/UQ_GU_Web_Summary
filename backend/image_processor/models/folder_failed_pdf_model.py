@@ -1,5 +1,8 @@
 from django.db import models
+<<<<<<< HEAD
+=======
 from django.contrib.auth.models import User
+>>>>>>> feature/final-summary
 from .folder_batch_model import FolderBatch
 from shared.models import BaseModel
 
@@ -13,11 +16,14 @@ class FolderFailedPDF(BaseModel):
         FolderBatch, on_delete=models.CASCADE, related_name="batch_failed_folders"
     )
 
+<<<<<<< HEAD
+=======
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="folder_failed_pdfs",
     )
 
+>>>>>>> feature/final-summary
     folder_name = models.CharField(max_length=512)
     reason      = models.TextField(blank=True)
 
