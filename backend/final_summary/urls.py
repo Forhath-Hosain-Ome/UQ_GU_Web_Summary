@@ -1,11 +1,4 @@
 from django.urls import path
-<<<<<<< HEAD
-
-from final_summary.views import (
-    FinalSummaryExcelUploadView,
-    FinalSummaryExportView,
-    FinalSummaryFilterOptionsView,
-=======
 from final_summary.views import (
     AuditUploadView,
     AuditBatchListView,
@@ -16,18 +9,11 @@ from final_summary.views import (
     AuditBatchLogsView,
     AuditBatchErrorJsonView,
     AuditReportGenerateView,
->>>>>>> feature/final-summary
 )
 
 app_name = "final_summary"
 
 urlpatterns = [
-<<<<<<< HEAD
-    path("uploads/excel/", FinalSummaryExcelUploadView.as_view(), name="excel_upload"),
-    path("reports/export/", FinalSummaryExportView.as_view(), name="report_export"),
-    path("options/", FinalSummaryFilterOptionsView.as_view(), name="filter_options"),
-]
-=======
     # ── 1. Bulk upload ─────────────────────────────────────────────────────────
     # POST  multipart/form-data, field "files" (one or many .xlsx/.xls)
     path("upload/",           AuditUploadView.as_view(),        name="upload"),
@@ -55,7 +41,6 @@ urlpatterns = [
 
     # ── Filter options (for export form dropdowns) ─────────────────────────────
     path("options/",          AuditFilterOptionsView.as_view(), name="filter_options"),
->>>>>>> feature/final-summary
 
 
     path("top-5", AuditReportGenerateView.as_view(), name="top-5",
