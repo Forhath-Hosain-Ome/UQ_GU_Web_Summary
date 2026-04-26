@@ -20,37 +20,37 @@ EXTRACT_SETTINGS = {
 MAPPINGS = {
     "100%": {
         "cells": {
-            "Total_audit":        _count("100%", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
-            "Item_name":          _unique("100%", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+            "Total_audit": {"type": "count"},
+            "Item_name": {"type": "unique"},
 
             "Check":              "T4",
             "Pass":               "U4",
             "Defect":             "W4",
             "Percent":            "X4",
 
-            "defect_catagory_1":  "K6",
-            "defect_catagory_2":  "K7",
-            "defect_catagory_3":  "K8",
-            "defect_catagory_4":  "K9",
-            "defect_catagory_5":  "K10",
+            # "defect_catagory_1":  "K6",
+            # "defect_catagory_2":  "K7",
+            # "defect_catagory_3":  "K8",
+            # "defect_catagory_4":  "K9",
+            # "defect_catagory_5":  "K10",
 
-            "defect_item_1":      "L6",
-            "defect_item_2":      "L7",
-            "defect_item_3":      "L8",
-            "defect_item_4":      "L9",
-            "defect_item_5":      "L10",
+            # "defect_item_1":      "L6",
+            # "defect_item_2":      "L7",
+            # "defect_item_3":      "L8",
+            # "defect_item_4":      "L9",
+            # "defect_item_5":      "L10",
 
-            "defect_qty_1":       "M6",
-            "defect_qty_2":       "M7",
-            "defect_qty_3":       "M8",
-            "defect_qty_4":       "M9",
-            "defect_qty_5":       "M10",
+            # "defect_qty_1":       "M6",
+            # "defect_qty_2":       "M7",
+            # "defect_qty_3":       "M8",
+            # "defect_qty_4":       "M9",
+            # "defect_qty_5":       "M10",
 
-            "defect_percent_1":   "N6",
-            "defect_percent_2":   "N7",
-            "defect_percent_3":   "N8",
-            "defect_percent_4":   "N9",
-            "defect_percent_5":   "N10",
+            # "defect_percent_1":   "N6",
+            # "defect_percent_2":   "N7",
+            # "defect_percent_3":   "N8",
+            # "defect_percent_4":   "N9",
+            # "defect_percent_5":   "N10",
         },
         "template_targets": {
             "Total_audit":        "C4",
@@ -61,36 +61,52 @@ MAPPINGS = {
             "Defect":             "K4",
             "Percent":            "M4",
 
-            "defect_catagory_1":  "C10",
-            "defect_catagory_2":  "C11",
-            "defect_catagory_3":  "C12",
-            "defect_catagory_4":  "C13",
-            "defect_catagory_5":  "C14",
+            # "defect_catagory_1":  "C10",
+            # "defect_catagory_2":  "C11",
+            # "defect_catagory_3":  "C12",
+            # "defect_catagory_4":  "C13",
+            # "defect_catagory_5":  "C14",
 
-            "defect_item_1":      "D10",
-            "defect_item_2":      "D11",
-            "defect_item_3":      "D12",
-            "defect_item_4":      "D13",
-            "defect_item_5":      "D14",
+            # "defect_item_1":      "D10",
+            # "defect_item_2":      "D11",
+            # "defect_item_3":      "D12",
+            # "defect_item_4":      "D13",
+            # "defect_item_5":      "D14",
 
-            "defect_qty_1":       "E10",
-            "defect_qty_2":       "E11",
-            "defect_qty_3":       "E12",
-            "defect_qty_4":       "E13",
-            "defect_qty_5":       "E14",
+            # "defect_qty_1":       "E10",
+            # "defect_qty_2":       "E11",
+            # "defect_qty_3":       "E12",
+            # "defect_qty_4":       "E13",
+            # "defect_qty_5":       "E14",
 
-            "defect_percent_1":   "F10",
-            "defect_percent_2":   "F11",
-            "defect_percent_3":   "F12",
-            "defect_percent_4":   "F13",
-            "defect_percent_5":   "F14",            
+            # "defect_percent_1":   "F10",
+            # "defect_percent_2":   "F11",
+            # "defect_percent_3":   "F12",
+            # "defect_percent_4":   "F13",
+            # "defect_percent_5":   "F14",            
         },
+        "defects": {
+            "start_row": 6,
+            "count": 5,
+            "columns": {
+                "category": "K",
+                "item": "L",
+                "qty": "M",
+                "percent": "N",
+            },
+            "target_map": {
+                "category": "defect_catagory_",
+                "item": "defect_item_",
+                "qty": "defect_qty_",
+                "percent": "defect_percent_",
+            }
+        }
     },
     
     "Final": {
         "cells": {
-            "Total_audit":        _count("Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
-            "Item_name":          _unique("Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+            # "Total_audit":        _count("Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            # "Item_name":          _unique("Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
 
             "Shipping":           "T4",
             "Audit":              "U4",
@@ -159,8 +175,8 @@ MAPPINGS = {
     
     "Final-100%": {
         "cells": {
-            "Total_audit":        _count("Final-100%", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
-            "Item_name":          _unique("Final-100%", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+            # "Total_audit":        _count("Final-100%", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            # "Item_name":          _unique("Final-100%", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
             
             "Shipping":           "T4",
             "Audit":              "U4",
@@ -227,8 +243,8 @@ MAPPINGS = {
 
     "Re-Final": {
         "cells": {
-            "Total_audit":        _count("Re-Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
-            "Item_name":          _unique("Re-Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
+            # "Total_audit":        _count("Re-Final", EXTRACT_SETTINGS.style_column, EXTRACT_SETTINGS.min_row),
+            # "Item_name":          _unique("Re-Final", EXTRACT_SETTINGS.item_column, EXTRACT_SETTINGS.min_row),
 
             "Shipping":           "T4",
             "Audit":              "U4",
@@ -297,25 +313,44 @@ MAPPINGS = {
 
 # ── main extract ──────────────────────────────────────────────────────────────
 
-def extract_data(wb, sheet_name):
-    """
-    Extract all data from the source sheet.
-    Returns a dict ready to be written into the template.
-    """
-    ws     = wb[sheet_name]
-    cfg    = MAPPINGS[sheet_name]
-    data   = {}
+# def extract_data(wb, sheet_name):
+#     """
+#     Extract all data from the source sheet.
+#     Returns a dict ready to be written into the template.
+#     """
+#     ws     = wb[sheet_name]
+#     cfg    = MAPPINGS[sheet_name]
+#     data   = {}
 
-    # Static cells
-    for key, coord in cfg["cells"].items():
+#     # Static cells
+#     for key, coord in cfg["cells"].items():
+#         data[key] = ws[coord].value
+
+#     # Dynamic column L data
+#     col    = EXTRACT_SETTINGS["column_letter"]
+#     start  = EXTRACT_SETTINGS["min_row"]
+#     unique_items  = _unique(ws, col, start)
+#     data["item_column"]   = ", ".join(str(i) for i in unique_items)
+#     data["style_column"] = _count(ws, col, start)
+
+#     return data
+def extract_data(wb, sheet_name):
+    ws = wb[sheet_name]
+    cfg = MAPPINGS.get(sheet_name, {})
+    settings = EXTRACT_SETTINGS
+    data = {}
+
+    # 1. static + computed cells
+    for key, rule in cfg.get("cells", {}).items():
+        data[key] = resolve_cell(ws, rule, settings)
+
+    # 2. template mapping
+    for key, coord in cfg.get("template_targets", {}).items():
         data[key] = ws[coord].value
 
-    # Dynamic column L data
-    col    = EXTRACT_SETTINGS["column_letter"]
-    start  = EXTRACT_SETTINGS["min_row"]
-    unique_items  = _unique(ws, col, start)
-    data["item_column"]   = ", ".join(str(i) for i in unique_items)
-    data["style_column"] = _count(ws, col, start)
+    # 3. defects block
+    if "defects" in cfg:
+        data.update(resolve_defects(ws, cfg["defects"]))
 
     return data
 
@@ -367,3 +402,38 @@ def process(source_file_bytes, template_path):
     wb_template.save(buf)
     buf.seek(0)
     return buf
+
+
+def resolve_cell(ws, rule, settings):
+    col = settings["item_column"]
+    start = settings["min_row"]
+
+    if isinstance(rule, str):
+        return ws[rule].value
+
+    if rule["type"] == "count":
+        return _count(ws, col, start)
+
+    if rule["type"] == "unique":
+        return _unique(ws, col, start)
+
+    return None
+
+def resolve_defects(ws, rule):
+    start = rule["start_row"]
+    count = rule["count"]
+    cols = rule["columns"]
+    prefix = rule["target_map"]
+
+    result = {}
+
+    for i in range(count):
+        row = start + i
+        idx = i + 1
+
+        result[f"{prefix['category']}{idx}"] = ws[f"{cols['category']}{row}"].value
+        result[f"{prefix['item']}{idx}"] = ws[f"{cols['item']}{row}"].value
+        result[f"{prefix['qty']}{idx}"] = ws[f"{cols['qty']}{row}"].value
+        result[f"{prefix['percent']}{idx}"] = ws[f"{cols['percent']}{row}"].value
+
+    return result
