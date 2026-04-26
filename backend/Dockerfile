@@ -13,21 +13,12 @@ RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 FROM python:3.12.8-slim
 WORKDIR /app
 
-<<<<<<< HEAD
-RUN apt-get update && apt-get install -y \
-    libreoffice-writer \
-    fonts-dejavu \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-    
-=======
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-writer \
     fonts-dejavu \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
->>>>>>> feature/final-summary
 COPY --from=builder /install /usr/local
 
 # Create non-root user

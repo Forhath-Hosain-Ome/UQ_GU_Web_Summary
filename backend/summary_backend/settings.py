@@ -1,16 +1,8 @@
-<<<<<<< HEAD
-=======
 import logging
->>>>>>> feature/final-summary
 from pathlib import Path
 from datetime import timedelta
 import os
 import sys
-<<<<<<< HEAD
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-=======
-
->>>>>>> feature/final-summary
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Allow importing the top-level workspace `analysis` package from backend code.
 WORKSPACE_ROOT = BASE_DIR.parent
@@ -51,10 +43,7 @@ INSTALLED_APPS = [
     'puma_summary.apps.PumaSummaryConfig',
     'image_processor.apps.ImageProcessorConfig',
     'final_summary.apps.FinalSummaryConfig',
-<<<<<<< HEAD
-=======
     'top_five.apps.TopFiveConfig',
->>>>>>> feature/final-summary
 ]
 
 MIDDLEWARE = [
@@ -301,14 +290,11 @@ IMAGE_PROCESSOR_SETTINGS = {
     "DEFECT_DOCX":        BASE_DIR / "media/output/defect_image/defect_docx",
 }
 
-<<<<<<< HEAD
-=======
 TOP_FIVE_SETTINGS = {
     "TOP_FIVE_TEMPLATE_PATH": TEMPLATE_ROOT / "template.xlsx",
     "OUTPUT_DIR" :        BASE_DIR / "media/output/top_five",
 }
 
->>>>>>> feature/final-summary
 # Celery Setup
 
 
@@ -321,9 +307,6 @@ CELERY_TASK_ROUTES = {
     'puma_summary.process_inspection_batch': {'queue': 'celery'},
     'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
     'image_processor.process_defect_docx':   {'queue': 'celery'},
-<<<<<<< HEAD
-=======
     'final_summary.process_audit_upload':    {'queue': 'celery'},
     'top_five.run_top5_job':                 {'queue': 'celery'},
->>>>>>> feature/final-summary
 }
