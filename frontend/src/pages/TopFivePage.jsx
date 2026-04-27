@@ -7,7 +7,7 @@ import { useOutputStore } from "../store/outputStore";
 import { useAuthStore } from "../store/authStore";
 import { fetchJobs } from "../services/topFiveApi";
 import filterByUser from "../utils/FilterByUser";
-import TopFiveOutput from "../components/top_five/TopFiveOutput"
+import TopFiveOutput from "../components/top_five/TopFiveOutput";
 
 // ── Top-Five specific menu sections ───────────────────────────────────────────
 const TOP_FIVE_SECTIONS = [
@@ -33,13 +33,10 @@ const TOP_FIVE_SECTIONS = [
   },
 ];
 
-export default function TopFivePage() {TopFiveOutput.jsx
+export default function TopFivePage() {
   const { user } = useAuthStore();
   const { setOutput, setLoading, addLog, clearOutput } = useOutputStore();
   const [activeId, setActiveId] = useState(null);
-
-  // Filter jobs to only show those created by the current user
-  
 
   const handleSelect = async (ep) => {
     setActiveId(ep.id);
@@ -55,7 +52,7 @@ export default function TopFivePage() {TopFiveOutput.jsx
         addLog({ level: "info", message: "Fetching jobs…" });
         try {
           const data = await fetchJobs();
-          const filtered = filterByUser(data);
+          const filtered = filterByUser(data, user);
           const count = (filtered.results || filtered).length;
           setOutput("top5-job-list", filtered, "All Jobs", { action: "view" });
           addLog({ level: "success", message: `Loaded ${count} job(s)` });
