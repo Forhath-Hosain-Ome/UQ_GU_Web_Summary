@@ -51,7 +51,7 @@ export default function DefectImagePage() {
           const data = await fetchBatches({ _t: Date.now() });
           const filtered = filterByUser(data, user);
           setOutput("batch-list", filtered, "All Batches", { action: "view", source: "image" });
-          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` );
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -65,7 +65,7 @@ export default function DefectImagePage() {
           const data = await fetchReports();
           const filtered = filterByUser(data, user);
           setOutput("report-list", filtered, "All Reports", { action: "view", source: "image" });
-          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` );
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -83,7 +83,7 @@ export default function DefectImagePage() {
           const data = await fetchBatches();
           const filtered = filterByUser(data, user);
           setOutput("batch-list", filtered, `Batches — ${ep.label}`, { action: ep.action, source: "image" });
-          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` );
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
@@ -97,12 +97,12 @@ export default function DefectImagePage() {
       case "certificate":
       case "cert-logs": {
         setLoading(true);
-        addLog({ level: "info", message: "Fetching reports…" );
+        addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
           const filtered = filterByUser(data, user);
           setOutput("report-list", filtered, `Reports — ${ep.label}`, { action: ep.action, source: "image" });
-          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` );
+          addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {
           addLog({ level: "error", message: `Failed: ${e.message}` });
           setLoading(false);
