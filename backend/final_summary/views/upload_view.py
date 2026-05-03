@@ -51,7 +51,10 @@ class AuditUploadView(APIView):
         if errors:
             return Response({"files": errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        temp_dir = tempfile.mkdtemp()
+        # Ensure shared temp directory exists (mounted volume for celery workers)
+        SHARED_TEMP_DIR = '/tmp/batch_uploads'
+        os.makedirs(SHARED_TEMP_DIR, exist_ok=True)
+        temp_dir = tempfile.mkdtemp(dir=SHARED_TEMP_DIR)
 
         try:
             saved_names = []
