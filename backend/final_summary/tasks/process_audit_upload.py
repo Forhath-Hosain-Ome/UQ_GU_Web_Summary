@@ -205,7 +205,7 @@ def _save_record(batch: UploadBatch, record) -> bool:
     time_limit=2100,
     name="final_summary.process_audit_upload",
 )
-def process_audit_upload(self, batch_id: int, upload_folder: str) -> dict:
+def process_audit_upload(self, batch_id: int, upload_folder: str, format_type: str = "SPI") -> dict:
     """
     Parameters
     ----------
@@ -240,22 +240,63 @@ def process_audit_upload(self, batch_id: int, upload_folder: str) -> dict:
         if not excel_files:
             raise ValueError("No Excel files found in upload folder.")
 
-        batch.total_files = len(excel_files)
-        batch.save(update_fields=["total_files"])
+        # Do not set total_files yet — determine after sheet expansion
+        batch.save(update_fields=["status"])
         _push_progress(batch, stage="EXTRACTING")
 
         # ── Stage 1: Extract ──────────────────────────────────────────────────
+        # Sheet configuration based on format_type
+        fmt = format_type.upper() if format_type else "SPI"
+        SHEET_CONFIG = {
+            "SPI":     ["Final", "Re-Final", "INLINE"],
+            "REGULAR": ["Final", "Refinal", "Inline", "Sample"],
+            "SWEATER": ["Final", "Refinal", "Sample"],
+        }
+        target_sheets = SHEET_CONFIG.get(fmt, SHEET_CONFIG["SPI"])
+
         extracted        = []
         extract_failures = []
 
         for excel_path in excel_files:
+            # Determine which sheets exist in this workbook
             try:
-                record = extract_record(excel_path)
-                extracted.append(record)
+                import openpyxl
+                wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+                sheet_names = wb.sheetnames
+                wb.close()
             except Exception as exc:
-                logger.exception("Extraction failed: %s — %s", excel_path.name, exc)
-                extract_failures.append(f"{excel_path.name}: {exc}")
+                logger.exception("Failed to read workbook sheets: %s", exc)
+                extract_failures.append(f"{excel_path.name}: cannot read sheets")
+                continue
 
+            # Match target sheets (case-insensitive)
+            sheets_to_process = []
+            for tname in target_sheets:
+                match = next((s for s in sheet_names if s.lower() == tname.lower()), None)
+                if match:
+                    sheets_to_process.append(match)
+
+            # If none found, fall back to first sheet to preserve backward compatibility
+            if not sheets_to_process:
+                if sheet_names:
+                    sheets_to_process = [sheet_names[0]]
+                else:
+                    extract_failures.append(f"{excel_path.name}: no sheets found")
+                    continue
+
+            for sheet_name in sheets_to_process:
+                try:
+                    record = extract_record(excel_path, sheet_name=sheet_name)
+                    # Tag record with sheet for uniqueness
+                    record.file_name = f"{excel_path.name} ({sheet_name})"
+                    extracted.append(record)
+                except Exception as exc:
+                    logger.exception("Extraction failed: %s (%s) — %s", excel_path.name, sheet_name, exc)
+                    extract_failures.append(f"{excel_path.name} ({sheet_name}): {exc}")
+
+        # Update total expected records
+        batch.total_files = len(extracted)
+        batch.save(update_fields=["total_files"])
         _push_progress(batch, stage="VALIDATING")
 
         # ── Stage 2: Validate ─────────────────────────────────────────────────

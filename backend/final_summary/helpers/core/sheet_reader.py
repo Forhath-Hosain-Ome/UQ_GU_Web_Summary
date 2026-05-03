@@ -11,7 +11,7 @@ All sheets are loaded with:
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -22,6 +22,35 @@ def read_first_sheet(path: Path) -> pd.DataFrame:
     Raises on file-read errors (caller is responsible for handling).
     """
     return pd.read_excel(path, sheet_name=0, header=None, dtype=str).fillna("")
+
+
+def read_sheet(path: Path, sheet_name: Optional[str] = None, skip_rows: int = 0) -> pd.DataFrame:
+    """
+    Load a specific worksheet from *path*.
+
+    Parameters
+    ----------
+    path : Path
+        Excel file path.
+    sheet_name : str, optional
+        Name of the sheet to load. If None, loads the first sheet.
+    skip_rows : int, optional
+        Number of rows to skip from the top before reading data (useful for
+        templates where data starts at a specific row).
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    if sheet_name is None:
+        return read_first_sheet(path)
+    return pd.read_excel(
+        path,
+        sheet_name=sheet_name,
+        header=None,
+        dtype=str,
+        skiprows=skip_rows if skip_rows > 0 else None,
+    ).fillna("")
 
 
 def read_all_sheets(path: Path) -> List[pd.DataFrame]:

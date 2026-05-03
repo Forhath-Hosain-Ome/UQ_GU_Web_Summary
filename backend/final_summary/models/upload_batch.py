@@ -16,12 +16,19 @@ class UploadBatch(BaseModel):
         PARTIAL    = "PARTIAL",    "Partial"   # some files failed
         FAILED     = "FAILED",     "Failed"
 
+    FORMAT_CHOICES = [
+        ("SPI",     "SPI Format (78)"),
+        ("REGULAR", "Regular Format (35)"),
+        ("SWEATER", "Sweater Format (37)"),
+    ]
+
     created_by     = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="audit_upload_batches",
     )
     celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
     status         = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    format_type    = models.CharField(max_length=20, choices=FORMAT_CHOICES, default="SPI")
 
     # Counters
     total_files     = models.PositiveIntegerField(default=0)

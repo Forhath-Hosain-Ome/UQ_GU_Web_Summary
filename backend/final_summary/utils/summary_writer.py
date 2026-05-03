@@ -789,7 +789,7 @@ def write_summary(
     output_path: Path,
 ) -> None:
     """
-    Generate the summary Excel workbook and save to *output_path*.
+    Generate the summary Excel workbook using the SPI-Final-78.xlsx template.
 
     Parameters
     ----------
@@ -797,53 +797,58 @@ def write_summary(
     defect_items_by_report : {report_id: [defect_item_dict, ...]}
     output_path            : destination .xlsx path
 
-    One sheet per inspection type (FINAL, RE-FINAL, INLINE, CMF, SAMPLE, UNKNOWN).
-    Sheet name is the canonical inspection type.
+    The template defines sheets: Final, Re-Final, INLINE (and Sample if needed).
+    Data rows start at row 12 for Final/Re-Final, row 5 for INLINE/Sample.
+    Prefix columns (A-W) are populated directly. Defect quantities are
+    distributed across columns Z onward (78 columns total for SPI template).
     """
-    # Build the global defect column plan (all categories/items across all records)
+    import openpyxl
+    from pathlib import Path
+    from django.conf import settings
+
+    # ── Select template based on defect column count ──────────────────────────
+    # Build the global defect plan to count columns
     defect_plan = build_defect_column_plan(defect_items_by_report)
+    num_defect_cols = len(defect_plan)
 
-    # Detection order: RE-FINAL / PRE-FINAL before FINAL (substring collision)
-    SHEET_ORDER = ["RE-FINAL", "PRE-FINAL", "FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"]
+    # SPI template has 78 defect columns; other formats may use template.xlsx (Analysis)
+    # For now, use SPI-Final-78.xlsx for any format with > 30 defect cols
+    if num_defect_cols >= 70:
+        template_name = "SPI-Final-78.xlsx"
+        template_path = Path(settings.BASE_DIR) / "media" / "templates" / template_name
+        start_rows = {"FINAL": 12, "RE-FINAL": 12, "PRE-FINAL": 12, "INLINE": 5, "SAMPLE": 5, "CMF": 12, "UNKNOWN": 12}
+    else:
+        # Fallback: use the generic Analysis template (template.xlsx) or build from scratch
+        template_name = "template.xlsx"
+        template_path = Path(settings.BASE_DIR) / "media" / "templates" / template_name
+        if not template_path.exists():
+            # No template available — build from scratch (original behavior)
+            _write_summary_from_scratch(records, defect_items_by_report, output_path)
+            return
+        start_rows = {"FINAL": 5, "RE-FINAL": 5, "PRE-FINAL": 5, "INLINE": 5, "SAMPLE": 5, "CMF": 5, "UNKNOWN": 5}
 
+    if not template_path.exists():
+        raise FileNotFoundError(f"Template not found: {template_path}")
+
+    # Load template workbook (keep all sheets)
+    wb = openpyxl.load_workbook(template_path, data_only=False)
+
+    # Map records to sheets by canonical inspection type
     def _canonical(itype: str) -> str:
-        """
-        Map any inspection_type string (from Excel cell or filename) to a
-        canonical sheet name. Handles every real-world variation:
-
-          RE-FINAL  : "Re-Final", "Re Final", "RE FINAL", "2nd Re-Final",
-                      "Re-Final Audit", "refinal"
-          FINAL     : "Final", "FINAL AUDIT", "Final Inspection",
-                      "Shipment Audit", "Pre-Shipment"
-          INLINE    : "Inline", "In-Line", "In Line", "Inline Inspection"
-          CMF       : "CMF", "Counter Master Fitting"
-          SAMPLE    : "Sample", "Pre-Production", "PP", "Pre Production"
-          PRE-FINAL : "Pre-Final", "Pre Final", "PRE FINAL"
-        """
         import re as _re
         u = (itype or "").upper().strip()
-
-        # PRE-FINAL must be checked BEFORE RE-FINAL
-        # ("PRE-FINAL" contains "RE-FINAL" as a substring)
         if _re.search(r"PRE[\s\-]?FINAL", u):
             return "PRE-FINAL"
-
-        # RE-FINAL — use negative lookbehind to exclude "PRE-FINAL"
         if _re.search(r"(?<!PRE[\-\s])RE[\s\-]?FINAL|REFINAL", u):
             return "RE-FINAL"
-
         if _re.search(r"\bFINAL\b|SHIPMENT\s*AUDIT|PRE[\s\-]?SHIPMENT", u):
             return "FINAL"
-
         if _re.search(r"IN[\s\-]?LINE", u):
             return "INLINE"
-
         if _re.search(r"\bCMF\b|COUNTER\s*MASTER", u):
             return "CMF"
-
         if _re.search(r"\bSAMPLE\b|PRE[\s\-]?PROD|PP\s*SAMPLE|\bPP\b", u):
             return "SAMPLE"
-
         return "UNKNOWN"
 
     by_type: Dict[str, List[Dict[str, Any]]] = {}
@@ -851,37 +856,17 @@ def write_summary(
         key = _canonical(rec.get("inspection_type") or "")
         by_type.setdefault(key, []).append(rec)
 
-    wb = openpyxl.Workbook()
-    if "Sheet" in wb.sheetnames:
-        del wb["Sheet"]
+    # Determine which sheets to write (only those with data AND that exist in template)
+    display_order = [s for s in ["FINAL", "RE-FINAL", "PRE-FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"] if s in wb.sheetnames and s in by_type]
 
-    # Tab display order in the workbook
-    DISPLAY_ORDER = ["FINAL", "RE-FINAL", "PRE-FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"]
+    for sheet_name in display_order:
+        type_records = by_type[sheet_name]
+        start_row = start_rows.get(sheet_name, 12)
+        ws = wb[sheet_name]
+        _fill_template_sheet(ws, type_records, defect_items_by_report, defect_plan, start_row)
 
-    sheets_written = 0
-    for sheet_name in DISPLAY_ORDER:
-        type_records = by_type.get(sheet_name)
-        if not type_records:
-            continue
-
-        # Per-sheet defect plan — only defect types in this sheet's records
-        sheet_defect_plan = build_defect_column_plan(
-            {r["report_id"]: defect_items_by_report.get(r["report_id"], [])
-             for r in type_records}
-        )
-
-        ws = wb.create_sheet(title=sheet_name[:31])
-        _write_sheet(ws, type_records, defect_items_by_report, sheet_defect_plan)
-        sheets_written += 1
-
-        logging.info(
-            f"  Sheet '{sheet_name}': {len(type_records)} record(s), "
-            f"{len(sheet_defect_plan)} defect column(s)"
-        )
-
-    if not wb.sheetnames:
-        wb.create_sheet("No Data")
+    # Ensure any other sheets (Helper-1, Helper-2) remain untouched — their formulas already reference data ranges
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
-    logging.info(f"Summary saved: {output_path}  ({sheets_written} sheet(s))")
+    logging.info(f"Summary saved using template '{template_name}': {output_path}")

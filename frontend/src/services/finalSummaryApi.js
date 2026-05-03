@@ -4,11 +4,13 @@ import final_summary_api from "../lib/final_summary_api";
 /**
  * POST /final-summary/upload/
  * Accepts one or many .xlsx/.xls files.
+ * Optional: format_type (SPI, REGULAR, SWEATER)
  * Returns { batch_id, total_files, files, ws_channel, message }
  */
-export const uploadBatch = (files) => {
+export const uploadBatch = (files, formatType = "SPI") => {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
+  fd.append("format_type", formatType);
   return final_summary_api.post("upload/", fd).then((r) => r.data);
 };
 

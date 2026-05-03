@@ -92,12 +92,6 @@ class AuditReport(BaseModel):
         ordering = ["-date_of_issue", "factory", "style_no"]
         verbose_name = "Audit Report"
         verbose_name_plural = "Audit Reports"
-        indexes = [
-            models.Index(fields=["factory", "date_of_issue"]),
-            models.Index(fields=["client", "date_of_issue"]),
-            models.Index(fields=["style_no", "date_of_issue"]),
-            models.Index(fields=["po_no"]),
-        ]
 
     def __str__(self):
         return f"{self.factory} | {self.style_no} | {self.date_of_issue}"

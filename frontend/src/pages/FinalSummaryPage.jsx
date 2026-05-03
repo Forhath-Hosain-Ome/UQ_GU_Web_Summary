@@ -137,6 +137,7 @@ function UploadStage({ onComplete }) {
   const [batchId, setBatchId]   = useState(null);
   const [progress, setProgress] = useState(null);
   const [busy, setBusy]         = useState(false);
+  const [formatType, setFormatType] = useState("SPI");  // SPI, REGULAR, SWEATER
   const inputRef = useRef(null);
 
   const addFiles = useCallback((incoming) => {
@@ -178,7 +179,7 @@ function UploadStage({ onComplete }) {
     setBusy(true);
     addLog({ level: "info", message: `Uploading ${files.length} Excel file(s)…` });
     try {
-      const data = await uploadBatch(files);
+      const data = await uploadBatch(files, formatType);
       setBatchId(data.batch_id);
       setProgress({ processed: 0, total: data.total_files, percent: 0, stage: "QUEUED" });
       addLog({ level: "success", message: `Batch #${data.batch_id} created — ${data.total_files} file(s) queued` });
@@ -218,9 +219,52 @@ function UploadStage({ onComplete }) {
         <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
           .xlsx and .xls · 50 MB per file max · Multiple files supported
         </div>
-      </div>
+       </div>
 
-      {/* File list */}
+       {/* Format selection */}
+       <div style={{ display: "flex", gap: "18px", alignItems: "center", marginTop: "4px" }}>
+         <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em" }}>
+           FORMAT
+         </span>
+         <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+           <input
+             type="radio"
+             name="format"
+             value="SPI"
+             checked={formatType === "SPI"}
+             onChange={() => setFormatType("SPI")}
+           />
+           <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)" }}>
+             SPI Format (78)
+           </span>
+         </label>
+         <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+           <input
+             type="radio"
+             name="format"
+             value="REGULAR"
+             checked={formatType === "REGULAR"}
+             onChange={() => setFormatType("REGULAR")}
+           />
+           <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)" }}>
+             Regular Format (35)
+           </span>
+         </label>
+         <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+           <input
+             type="radio"
+             name="format"
+             value="SWEATER"
+             checked={formatType === "SWEATER"}
+             onChange={() => setFormatType("SWEATER")}
+           />
+           <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)" }}>
+             Sweater Format (37)
+           </span>
+         </label>
+       </div>
+
+       {/* File list */}
       {files.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)", letterSpacing: "0.08em", marginBottom: "4px" }}>

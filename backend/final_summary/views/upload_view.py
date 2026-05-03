@@ -51,6 +51,12 @@ class AuditUploadView(APIView):
         if errors:
             return Response({"files": errors}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Get format selection (default to SPI if not provided)
+        fmt = request.data.get("format_type", "SPI").upper()
+        valid_formats = dict(UploadBatch.FORMAT_CHOICES).keys()
+        if fmt not in valid_formats:
+            fmt = "SPI"
+
         # Ensure shared temp directory exists (mounted volume for celery workers)
         SHARED_TEMP_DIR = '/tmp/batch_uploads'
         os.makedirs(SHARED_TEMP_DIR, exist_ok=True)
@@ -73,12 +79,13 @@ class AuditUploadView(APIView):
                 saved_names.append(os.path.basename(dest))
 
             batch = UploadBatch.objects.create(
-                created_by  = request.user,
-                total_files = len(files),
-                status      = UploadBatch.Status.PENDING,
+                created_by    = request.user,
+                total_files   = len(files),
+                status        = UploadBatch.Status.PENDING,
+                format_type   = fmt,
             )
 
-            task = process_audit_upload.delay(batch.pk, temp_dir)
+            task = process_audit_upload.delay(batch.pk, temp_dir, fmt)
 
             batch.celery_task_id = task.id
             batch.save(update_fields=["celery_task_id"])

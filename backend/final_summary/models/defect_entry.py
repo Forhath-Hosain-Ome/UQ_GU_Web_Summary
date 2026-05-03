@@ -27,12 +27,9 @@ class DefectEntry(BaseModel):
     comment     = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["category", "item"]
-        verbose_name = "Defect Entry"
-        verbose_name_plural = "Defect Entries"
-        indexes = [
-            models.Index(fields=["report", "category"]),
-        ]
+        ordering = ['category', 'item']
+        verbose_name = 'Defect Entry'
+        verbose_name_plural = 'Defect Entries'
 
     def __str__(self):
         return f"{self.category} / {self.item} — {self.major}M/{self.minor}m"
