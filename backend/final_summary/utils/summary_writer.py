@@ -780,6 +780,123 @@ def _set_column_widths(ws, total_prefix: int, total_defect: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Template-based sheet writer (completes the _fill_template_sheet stub)
+# ---------------------------------------------------------------------------
+
+def _fill_template_sheet(
+    ws,
+    records: List[Dict[str, Any]],
+    defect_items_by_report: Dict[int, List[Dict[str, Any]]],
+    defect_plan: List[Tuple[str, str]],
+    start_row: int,
+) -> None:
+    """
+    Fill a template sheet starting at the given start_row.
+    The template already has headers - we just fill the data rows.
+    """
+    # Read defect column headers from row 2 to get the template's column order
+    template_defect_cols: List[Tuple[str, str]] = []
+    for col_idx in range(21, ws.max_column + 1):
+        header = ws.cell(row=2, column=col_idx).value
+        if header is not None:
+            # Template doesn't include categories, just item names
+            template_defect_cols.append(("", str(header).strip()))
+
+    total_prefix = 20  # Template has 20 prefix columns
+    current_row = start_row
+
+    for rec in records:
+        report_id = rec.get("report_id")
+
+        # Build defect lookup for this record: (item) → major_count
+        defect_lookup: Dict[str, int] = {}
+        if report_id is not None:
+            for d in defect_items_by_report.get(report_id, []):
+                item = (d.get("item") or "").strip()
+                if item:
+                    defect_lookup[item] = int(d.get("major_count", 0))
+
+        # Write prefix columns (template has fixed mapping)
+        col_map = {
+            "factory": 1, "date_of_issue": 2, "inspection_type": 3,
+            "factory_in": 4, "factory_out": 5, "factory_total_hours": 6,
+            "audit_start": 7, "audit_end": 8, "audit_total_hours": 9,
+            "audit_result": 10, "report_no": 11, "item_name": 12,
+            "style_no": 13, "po_no": 14, "country": 15,
+            "audit_qty": 16, "acceptable_defect_qty": 17, "defect_qty": 18,
+            "defect_percentage": 19, "person": 20,
+        }
+        for key, col_idx in col_map.items():
+            val = _get_prefix_value(rec, key)
+            cell = ws.cell(row=current_row, column=col_idx, value=val)
+            cell.font = _DATA_FONT
+            cell.alignment = _CENTRE
+            cell.border = _CELL_BORDER
+
+        # Write defect columns based on template's column order
+        for idx, (_, item_name) in enumerate(template_defect_cols):
+            count = defect_lookup.get(item_name, "")
+            col_idx = total_prefix + 1 + idx
+            cell = ws.cell(row=current_row, column=col_idx, value=count if count else "")
+            cell.font = _DATA_FONT
+            cell.alignment = _CENTRE
+            cell.border = _CELL_BORDER
+
+        current_row += 1
+
+
+def _write_summary_from_scratch(
+    records: List[Dict[str, Any]],
+    defect_items_by_report: Dict[int, List[Dict[str, Any]]],
+    output_path: Path,
+) -> None:
+    """
+    Build summary from scratch (no template) - used as fallback.
+    Groups records by inspection type and writes sheets using _write_sheet.
+    """
+    import openpyxl
+
+    # Group records by canonical inspection type
+    by_type: Dict[str, List[Dict[str, Any]]] = {}
+    for rec in records:
+        itype = (rec.get("inspection_type") or "").upper().strip()
+        if "PRE" in itype and "FINAL" in itype:
+            key = "PRE-FINAL"
+        elif "RE" in itype and "FINAL" in itype:
+            key = "RE-FINAL"
+        elif "FINAL" in itype:
+            key = "FINAL"
+        elif "INLINE" in itype:
+            key = "INLINE"
+        elif "CMF" in itype:
+            key = "CMF"
+        elif "SAMPLE" in itype:
+            key = "SAMPLE"
+        else:
+            key = "UNKNOWN"
+        by_type.setdefault(key, []).append(rec)
+
+    wb = openpyxl.Workbook()
+    if "Sheet" in wb.sheetnames:
+        del wb["Sheet"]
+
+    # Build global defect plan
+    defect_plan = build_defect_column_plan(defect_items_by_report)
+
+    for sheet_name in ["FINAL", "RE-FINAL", "PRE-FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"]:
+        type_records = by_type.get(sheet_name)
+        if not type_records:
+            continue
+
+        ws = wb.create_sheet(title=sheet_name[:31])
+        _write_sheet(ws, type_records, defect_items_by_report, defect_plan)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(output_path)
+    logging.info(f"Summary saved (from scratch): {output_path}")
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -857,11 +974,30 @@ def write_summary(
         by_type.setdefault(key, []).append(rec)
 
     # Determine which sheets to write (only those with data AND that exist in template)
-    display_order = [s for s in ["FINAL", "RE-FINAL", "PRE-FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"] if s in wb.sheetnames and s in by_type]
+    # Sheet names in template are mixed-case (Final, Re-Final, INLINE)
+    # Map our canonical names to template sheet names
+    template_sheet_names = {s.lower(): s for s in wb.sheetnames}
+    sheet_name_map = {
+        "FINAL": "Final",
+        "RE-FINAL": "Re-Final",
+        "PRE-FINAL": None,  # No Pre-Final in template
+        "INLINE": "INLINE",
+        "CMF": None,  # No CMF in template
+        "SAMPLE": None,  # No Sample in template
+        "UNKNOWN": None,
+    }
+    display_order = [
+        sheet_name_map.get(s) 
+        for s in ["FINAL", "RE-FINAL", "PRE-FINAL", "INLINE", "CMF", "SAMPLE", "UNKNOWN"] 
+        if sheet_name_map.get(s) and s in by_type
+    ]
 
     for sheet_name in display_order:
-        type_records = by_type[sheet_name]
-        start_row = start_rows.get(sheet_name, 12)
+        # Find the canonical key for this sheet
+        reverse_map = {v: k for k, v in sheet_name_map.items() if v}
+        canonical_key = reverse_map.get(sheet_name, "FINAL")
+        type_records = by_type.get(canonical_key, [])
+        start_row = start_rows.get(canonical_key, 12)
         ws = wb[sheet_name]
         _fill_template_sheet(ws, type_records, defect_items_by_report, defect_plan, start_row)
 
