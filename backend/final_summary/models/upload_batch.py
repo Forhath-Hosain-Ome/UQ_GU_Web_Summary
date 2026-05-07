@@ -1,41 +1,62 @@
+"""
+-----------------------
+One upload session = one batch.
+
+Key changes from old model
+---------------------------
+- buyer_factory_pair FK replaces the free-text format_type field.
+  The pair drives which extractor and which template are used.
+- inspection_date is set by the user at upload time and applied to
+  every AuditReport in this batch (not extracted from Excel).
+- format_type property is derived from the pair for backward compat.
+"""
+
 from django.db import models
-from django.contrib.auth.models import User
 from shared.models import BaseModel
+from .buyer_factory_pair import BuyerFactoryPair
 
 
 class UploadBatch(BaseModel):
-    """
-    Represents one bulk-upload session of Excel files.
-    Each batch contains many AuditReports extracted from those files.
-    """
+    """One bulk-upload session of Excel audit files."""
 
     class Status(models.TextChoices):
         PENDING    = "PENDING",    "Pending"
         PROCESSING = "PROCESSING", "Processing"
         COMPLETED  = "COMPLETED",  "Completed"
-        PARTIAL    = "PARTIAL",    "Partial"   # some files failed
+        PARTIAL    = "PARTIAL",    "Partial"
         FAILED     = "FAILED",     "Failed"
 
-    FORMAT_CHOICES = [
-        ("SPI",     "SPI Format (78)"),
-        ("REGULAR", "Regular Format (35)"),
-        ("SWEATER", "Sweater Format (37)"),
-    ]
-
-    created_by     = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="audit_upload_batches",
+    # ── Registration link ─────────────────────────────────────────────────────
+    pair = models.ForeignKey(
+        BuyerFactoryPair,
+        on_delete=models.PROTECT,
+        related_name="batches",
+        help_text="The buyer–factory pair this batch belongs to.",
     )
-    celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
-    status         = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    format_type    = models.CharField(max_length=20, choices=FORMAT_CHOICES, default="SPI")
 
-    # Counters
+    # ── User inputs at upload time ────────────────────────────────────────────
+    inspection_date = models.DateField(
+        help_text=(
+            "Inspection date entered by the user at upload. "
+            "Applied to every report in this batch instead of extracting "
+            "it from the Excel files."
+        ),
+    )
+
+    # ── Tracking ──────────────────────────────────────────────────────────────
+    celery_task_id = models.CharField(max_length=255, blank=True, db_index=True)
+    status         = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+
+    # ── Counters ──────────────────────────────────────────────────────────────
     total_files     = models.PositiveIntegerField(default=0)
     processed_files = models.PositiveIntegerField(default=0)
     failed_files    = models.PositiveIntegerField(default=0)
 
-    # Raw error dump
+    # ── Error log ─────────────────────────────────────────────────────────────
     error_log = models.TextField(blank=True)
 
     class Meta:
@@ -43,18 +64,36 @@ class UploadBatch(BaseModel):
         verbose_name = "Upload Batch"
         verbose_name_plural = "Upload Batches"
 
-    def __str__(self):
+    def __str__(self) -> str:
         user = self.created_by.username if self.created_by_id else "unknown"
-        return f"AuditBatch #{self.pk} | {self.status} | by {user}"
+        return (
+            f"Batch #{self.pk} | {self.pair} | "
+            f"{self.inspection_date} | {self.status} | by {user}"
+        )
+
+    # ── Derived properties ────────────────────────────────────────────────────
 
     @property
-    def success_rate(self):
+    def format_type(self) -> str:
+        """Backward-compatible alias — derive from the pair."""
+        return self.pair.report_type
+
+    @property
+    def buyer(self):
+        return self.pair.buyer
+
+    @property
+    def factory(self):
+        return self.pair.factory
+
+    @property
+    def success_rate(self) -> float:
         if not self.total_files:
             return 0.0
         return round(self.processed_files / self.total_files * 100, 1)
 
     @property
-    def progress_percent(self):
+    def progress_percent(self) -> int:
         if self.status in (self.Status.COMPLETED, self.Status.PARTIAL):
             return 100
         if not self.total_files:
