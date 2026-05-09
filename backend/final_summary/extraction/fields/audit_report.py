@@ -13,7 +13,7 @@ To change the pattern → edit is_valid_report_no / is_valid_po_no in proximity.
 from pathlib import Path
 from typing import Optional
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     resolve_po_or_report_number,

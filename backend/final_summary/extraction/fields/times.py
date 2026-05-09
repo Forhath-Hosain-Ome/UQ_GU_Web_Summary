@@ -20,7 +20,7 @@ To change time format      → edit to_hhmm() in extraction/core/normalise.py.
 from pathlib import Path
 from typing import Optional
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     to_hhmm,

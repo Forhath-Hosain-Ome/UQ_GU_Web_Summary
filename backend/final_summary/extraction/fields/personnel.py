@@ -23,7 +23,7 @@ To change search direction for a field → edit the corresponding _DIRECTION con
 from pathlib import Path
 from typing import Optional
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     resolve_value,

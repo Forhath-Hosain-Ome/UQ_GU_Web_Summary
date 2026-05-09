@@ -1,5 +1,4 @@
 """
-extraction/core/label_map.py
 -----------------------------
 Shared enums and constants used across the entire extraction pipeline.
 

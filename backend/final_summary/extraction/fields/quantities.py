@@ -36,7 +36,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     to_int,

@@ -24,7 +24,7 @@ To change normalisation → edit to_display_date() in extraction/core/normalise.
 from pathlib import Path
 from typing import Optional
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     to_display_date,

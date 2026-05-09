@@ -13,7 +13,7 @@ To change country codes → edit STYLE_COUNTRY_MAP in extraction/core/label_map.
 from pathlib import Path
 from typing import Optional, Tuple
 
-from extraction.core import (
+from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
     STYLE_COUNTRY_MAP,
