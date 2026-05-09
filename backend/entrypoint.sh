@@ -43,4 +43,4 @@ python manage.py migrate
 
 # 4. Start the server
 echo "Starting server..."
-exec daphne -b 0.0.0.0 -p 8000 summary_backend.asgi:application
+exec daphne -b 0.0.0.0 -p 8001 summary_backend.asgi:application

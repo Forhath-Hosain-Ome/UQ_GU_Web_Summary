@@ -1,3 +1,4 @@
 backend/media/output/
 backend/media/uploads/
 backend/media/puma/
+entrypoint.sh
