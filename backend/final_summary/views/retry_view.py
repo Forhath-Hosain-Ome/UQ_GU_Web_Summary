@@ -1,265 +1,316 @@
 """
-views/retry_view.py
---------------------
-POST /final-summary/retry/
+---------------------
+Three endpoints for the Stage 3 Fix & Retry flow.
 
-After a bulk upload some records fail blocking validation (e.g. factory
-name missing, date unreadable).  The task writes those blocked records into
-batch.error_log as a newline list.  The frontend can download a structured
-error JSON via GET /final-summary/batches/<pk>/logs/error-json/ and let the
-user fix the fields manually, then re-upload the corrected JSON here.
+GET  /api/final-summary/retry/search/
+  Search blocked records by date and/or style.
+  Returns last 20 if no filters given.
+  Query params: date (YYYY-MM-DD), style (partial), limit (default 20)
 
-Flow
-----
-1. Frontend downloads  GET /final-summary/batches/<pk>/logs/error-json/
-   → returns { batch_id, records: [{file_name, factory, client, ...}, ...] }
-2. User opens JSON, fixes the flagged fields.
-3. Frontend POSTs the fixed JSON to this endpoint.
-4. We re-validate every record in the JSON.
-5. Records that now pass → saved to DB, linked to the original batch.
-6. Records that still fail → returned in the response as "still_blocked".
+GET  /api/final-summary/retry/<batch_id>/download/
+  Download the error JSON for a batch (blocked records only).
 
-Request body (JSON):
-  {
-    "batch_id": 42,          ← required: links saved records to the original batch
-    "records": [
-      {
-        "file_name": "DH26-01ABC-001.xlsx",
-        "factory":   "BABL Factory",
-        "client":    "UNIQLO",
-        "date_of_issue": "01/15/2026",
-        ... (all AuditRecord fields)
-      },
-      ...
-    ]
-  }
-
-Response:
-  {
-    "batch_id":      42,
-    "submitted":     5,
-    "saved":         4,
-    "still_blocked": [{ "file_name": "...", "blocking_errors": [...] }]
-  }
+POST /api/final-summary/retry/upload/
+  Upload a user-fixed error JSON file.
+  Body: multipart with field "file" (JSON file) and "batch_id".
+  Each record is re-validated; clean ones are saved; still-blocked ones
+  are returned in the response.
 """
+
 import json
 import logging
+from datetime import datetime
+from pathlib import Path
 
+from django.conf import settings
+from django.db.models import Q
+from django.http import JsonResponse
 from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from final_summary.models import UploadBatch, AuditReport, DefectEntry
+from final_summary.models import AuditReport, UploadBatch, DefectEntry
+from utils.error_json import build_error_payload, read_error_json
 
 logger = logging.getLogger(__name__)
 
 
-def _save_fixed_record(batch: UploadBatch, record, user) -> bool:
+# ── Search ────────────────────────────────────────────────────────────────────
+
+class RetrySearchView(APIView):
     """
-    Persist one fixed AuditRecord that passed re-validation.
-    Skips if file_name already exists in this batch (idempotent).
-    Returns True on success.
-    """
-    from django.utils.dateparse import parse_date
-    from datetime import datetime
+    GET /api/final-summary/retry/search/
 
-    def _to_date(value):
-        if not value:
-            return None
-        s = str(value).strip()
-        d = parse_date(s)
-        if d:
-            return d
-        for fmt in ("%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d", "%m-%d-%Y"):
-            try:
-                return datetime.strptime(s, fmt).date()
-            except ValueError:
-                continue
-        return None
+    Returns blocked AuditReport records matching the given filters.
+    If no filters are given, returns the last 20 blocked records.
 
-    if AuditReport.objects.filter(batch=batch, file_name=record.file_name).exists():
-        logger.info("Retry: duplicate skipped — %s", record.file_name)
-        return False
-
-    try:
-        report = AuditReport.objects.create(
-            batch               = batch,
-            created_by          = user,
-            file_name           = record.file_name,
-            factory             = record.factory or "",
-            client              = record.client or "",
-            date_of_issue       = _to_date(record.date_of_issue),
-            inspection_type     = record.inspection_type or "",
-            report_no           = record.report_no or "",
-            audit_report        = record.audit_report or "",
-            item_name           = record.item_name or "",
-            style_no            = record.style_no or "",
-            po_no               = record.po_no or "",
-            country             = record.country or "",
-            factory_in_time     = record.factory_in_time or "",
-            factory_out_time    = record.factory_out_time or "",
-            factory_total_hours = record.factory_total_hours or "",
-            audit_start_time    = record.audit_start_time or "",
-            audit_end_time      = record.audit_end_time or "",
-            audit_total_hours   = record.audit_total_hours or "",
-            audit_result        = record.audit_result or "-",
-            po_qty              = record.po_qty or "",
-            po_qty_pcs          = int(record.po_qty_pcs or 0),
-            po_qty_pack         = int(record.po_qty_pack or 0),
-            po_qty_set          = int(record.po_qty_set or 0),
-            do_qty              = int(record.do_qty or 0),
-            ship_qty            = str(record.ship_qty or ""),
-            audit_qty           = str(record.audit_qty or ""),
-            exf                 = _to_date(record.exf),
-            po_edt              = _to_date(record.po_edt),
-            po_wh               = _to_date(record.po_wh),
-            plan_edt            = _to_date(record.plan_edt),
-            plan_wh             = _to_date(record.plan_wh),
-            defect_qty            = str(record.defect_qty or ""),
-            acceptable_defect_qty = str(record.acceptable_defect_qty or "-"),
-            defect_percentage     = str(record.defect_percentage or ""),
-            person              = record.person or "",
-            inspector           = record.inspector or "",
-            carton              = record.carton or "",
-            needle_detector     = record.needle_detector or "",
-            remarks             = record.remarks or "",
-            do_set_col_size     = record.do_set_col_size or "",
-            do_note             = record.do_note or "",
-            has_validation_errors = bool(record.validation_errors),
-            validation_errors     = ", ".join(record.validation_errors or []),
-            blocking_errors       = "",   # cleared — record passed re-validation
-            do_orders_json        = json.dumps(record.do_orders or []),
-        )
-
-        defect_objects = []
-        for d in (record.defect_rows or []):
-            if not isinstance(d, dict):
-                continue
-            cat     = (d.get("category") or "").strip()
-            item    = (d.get("item") or "").strip()
-            major   = int(d.get("major", 0) or 0)
-            minor   = int(d.get("minor", 0) or 0)
-            comment = (d.get("comment") or "").strip()
-            if not cat and not item:
-                continue
-            if major == 0 and minor == 0 and not comment:
-                continue
-            defect_objects.append(DefectEntry(
-                report=report, created_by=user,
-                category=cat, item=item,
-                major=major, minor=minor, comment=comment,
-            ))
-        if defect_objects:
-            DefectEntry.objects.bulk_create(defect_objects)
-
-        # Update batch counters
-        batch.processed_files += 1
-        if batch.failed_files > 0:
-            batch.failed_files -= 1
-        # Re-evaluate status
-        if batch.failed_files == 0:
-            batch.status = UploadBatch.Status.COMPLETED
-        else:
-            batch.status = UploadBatch.Status.PARTIAL
-        batch.save(update_fields=["processed_files", "failed_files", "status"])
-
-        logger.info("Retry saved: %s → AuditReport #%s", record.file_name, report.pk)
-        return True
-
-    except Exception as exc:
-        logger.exception("Retry: failed to save %s: %s", record.file_name, exc)
-        return False
-
-
-class AuditRetryView(APIView):
-    """
-    POST /final-summary/retry/
-
-    Body: { batch_id: int, records: [AuditRecord-shaped dicts] }
+    Query params
+    ------------
+    date   : YYYY-MM-DD — filter by date_of_issue
+    style  : partial string — filter by style_no (case-insensitive)
+    limit  : max records to return (default 20, max 100)
     """
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        batch_id = request.data.get("batch_id")
-        records_raw = request.data.get("records")
+    def get(self, request):
+        date_str  = request.query_params.get("date",  "").strip()
+        style_str = request.query_params.get("style", "").strip()
+        try:
+            limit = min(int(request.query_params.get("limit", 20)), 100)
+        except (ValueError, TypeError):
+            limit = 20
 
-        if not batch_id:
-            return Response(
-                {"detail": "batch_id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not isinstance(records_raw, list) or not records_raw:
-            return Response(
-                {"detail": "records must be a non-empty list."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        qs = AuditReport.objects.select_related(
+            "batch", "batch__pair", "batch__pair__buyer", "batch__pair__factory"
+        ).exclude(blocking_errors="")
 
-        # Fetch the batch — user must own it (unless staff)
+        if not request.user.is_staff:
+            qs = qs.filter(batch__created_by=request.user)
+
+        if date_str:
+            qs = qs.filter(date_of_issue=date_str)
+
+        if style_str:
+            qs = qs.filter(style_no__icontains=style_str)
+
+        qs = qs.order_by("-date_of_issue", "-created_at")[:limit]
+
+        records = []
+        for r in qs:
+            records.append({
+                "report_id":        r.pk,
+                "batch_id":         r.batch_id,
+                "file_name":        r.file_name,
+                "date_of_issue":    str(r.date_of_issue) if r.date_of_issue else "",
+                "style_no":         r.style_no,
+                "factory":          r.factory,
+                "client":           r.client,
+                "inspection_type":  r.inspection_type,
+                "blocking_errors":  [e for e in r.blocking_errors.split("\n") if e],
+                "validation_errors":[e for e in r.validation_errors.split("\n") if e],
+                "cross_check_warnings": [e for e in r.cross_check_warnings.split("\n") if e],
+            })
+
+        return Response({
+            "count":   len(records),
+            "filters": {"date": date_str, "style": style_str},
+            "records": records,
+        })
+
+
+# ── Download error JSON ───────────────────────────────────────────────────────
+
+class RetryDownloadView(APIView):
+    """
+    GET /api/final-summary/retry/<batch_id>/download/
+
+    Returns the error JSON for all blocked records in a batch.
+    The user downloads this, fixes it, and re-uploads via RetryUploadView.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, batch_id: int):
         try:
             qs = UploadBatch.objects.all()
             if not request.user.is_staff:
                 qs = qs.filter(created_by=request.user)
             batch = qs.get(pk=batch_id)
         except UploadBatch.DoesNotExist:
-            return Response({"detail": "Batch not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Batch not found."}, status=404)
 
-        # Import the AuditRecord dataclass + validators
-        from final_summary.models.audit_record import AuditRecord
-        from final_summary.helpers.validator import validate_blocking, apply_refinement_rules
-        import dataclasses
-
-        valid_fields = {f.name for f in dataclasses.fields(AuditRecord)}
-
-        saved         = 0
-        still_blocked = []
-
-        for raw in records_raw:
-            if not isinstance(raw, dict):
-                continue
-
-            # Build AuditRecord from the dict — ignore unknown keys
-            kwargs = {k: v for k, v in raw.items() if k in valid_fields}
-            try:
-                record = AuditRecord(**kwargs)
-            except Exception as exc:
-                still_blocked.append({
-                    "file_name":       raw.get("file_name", "unknown"),
-                    "blocking_errors": [f"Could not parse record: {exc}"],
-                })
-                continue
-
-            # Clear old error state so we validate from scratch
-            record.blocking_errors   = []
-            record.validation_errors = []
-
-            # Re-apply date/time formatting
-            record = apply_refinement_rules(record)
-
-            # Re-run blocking validation
-            record = validate_blocking(record)
-
-            if record.blocking_errors:
-                still_blocked.append({
-                    "file_name":       record.file_name,
-                    "blocking_errors": record.blocking_errors,
-                    "validation_errors": record.validation_errors,
-                })
-                logger.warning(
-                    "Retry: still blocked — %s: %s",
-                    record.file_name, record.blocking_errors,
-                )
-                continue
-
-            if _save_fixed_record(batch, record, request.user):
-                saved += 1
-
-        return Response(
-            {
-                "batch_id":      batch.pk,
-                "submitted":     len(records_raw),
-                "saved":         saved,
-                "still_blocked": still_blocked,
-            },
-            status=status.HTTP_200_OK,
+        # Collect blocked reports
+        blocked_reports = list(
+            batch.reports.exclude(blocking_errors="").order_by("file_name")
         )
+
+        if not blocked_reports:
+            return Response({
+                "batch_id":      batch_id,
+                "total_blocked": 0,
+                "records":       [],
+                "message":       "No blocked records — nothing to download.",
+            })
+
+        # Build a lightweight serialisable record for each blocked report
+        records_out = []
+        for r in blocked_reports:
+            defect_entries = list(
+                DefectEntry.objects.filter(report=r).values(
+                    "category", "item", "major", "minor", "comment"
+                )
+            )
+            do_orders = []
+            try:
+                do_orders = json.loads(r.do_orders_json or "[]")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            records_out.append({
+                "file_name":            r.file_name,
+                "blocking_errors":      [e for e in r.blocking_errors.split("\n") if e],
+                "validation_errors":    [e for e in r.validation_errors.split("\n") if e],
+                "cross_check_warnings": [e for e in r.cross_check_warnings.split("\n") if e],
+                "factory":              r.factory,
+                "client":               r.client,
+                "date_of_issue":        str(r.date_of_issue) if r.date_of_issue else "",
+                "inspection_type":      r.inspection_type,
+                "report_no":            r.report_no,
+                "audit_report":         r.audit_report,
+                "item_name":            r.item_name,
+                "style_no":             r.style_no,
+                "po_no":                r.po_no,
+                "country":              r.country,
+                "factory_in_time":      r.factory_in_time,
+                "factory_out_time":     r.factory_out_time,
+                "factory_total_hours":  r.factory_total_hours,
+                "audit_start_time":     r.audit_start_time,
+                "audit_end_time":       r.audit_end_time,
+                "audit_total_hours":    r.audit_total_hours,
+                "audit_result":         r.audit_result,
+                "po_qty":               r.po_qty,
+                "po_qty_pcs":           r.po_qty_pcs,
+                "po_qty_pack":          r.po_qty_pack,
+                "po_qty_set":           r.po_qty_set,
+                "do_qty":               r.do_qty,
+                "ship_qty":             r.ship_qty,
+                "audit_qty":            r.audit_qty,
+                "exf":                  str(r.exf)      if r.exf      else "",
+                "po_edt":               str(r.po_edt)   if r.po_edt   else "",
+                "po_wh":                str(r.po_wh)    if r.po_wh    else "",
+                "plan_edt":             str(r.plan_edt) if r.plan_edt else "",
+                "plan_wh":              str(r.plan_wh)  if r.plan_wh  else "",
+                "defect_qty":           r.defect_qty,
+                "acceptable_defect_qty":r.acceptable_defect_qty,
+                "defect_percentage":    r.defect_percentage,
+                "person":               r.person,
+                "inspector":            r.inspector,
+                "carton":               r.carton,
+                "needle_detector":      r.needle_detector,
+                "remarks":              r.remarks,
+                "do_set_col_size":      r.do_set_col_size,
+                "do_note":              r.do_note,
+                "defect_rows":          [
+                    {"category": d["category"], "item": d["item"],
+                     "major": d["major"], "minor": d["minor"], "comment": d["comment"]}
+                    for d in defect_entries
+                ],
+                "do_orders":            do_orders,
+            })
+
+        from datetime import datetime as _dt
+        payload = {
+            "version":       "2.0",
+            "batch_id":      batch_id,
+            "generated_at":  _dt.utcnow().isoformat(timespec="seconds"),
+            "total_blocked": len(records_out),
+            "instructions":  (
+                "Fix the fields in 'blocking_errors' for each record. "
+                "Then upload this file via the 'Upload Fixed JSON' button. "
+                "Do NOT change 'file_name'."
+            ),
+            "records": records_out,
+        }
+
+        return Response(payload)
+
+
+# ── Upload fixed JSON ─────────────────────────────────────────────────────────
+
+class RetryUploadView(APIView):
+    """
+    POST /api/final-summary/retry/upload/
+
+    Body: multipart/form-data
+      batch_id : int   — which batch these records belong to
+      file     : file  — the fixed error JSON file
+
+    Each record is re-validated. Clean records are saved to the DB.
+    Still-blocked records are returned in the response so the user
+    can fix them again.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes     = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        batch_id = request.data.get("batch_id")
+        if not batch_id:
+            return Response(
+                {"detail": "batch_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return Response(
+                {"detail": "A JSON file is required (field: 'file')."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch batch
+        try:
+            qs = UploadBatch.objects.select_related("pair", "pair__buyer", "pair__factory")
+            if not request.user.is_staff:
+                qs = qs.filter(created_by=request.user)
+            batch = qs.get(pk=batch_id)
+        except UploadBatch.DoesNotExist:
+            return Response({"detail": "Batch not found."}, status=404)
+
+        # Parse JSON
+        try:
+            raw_json = uploaded_file.read().decode("utf-8")
+            records  = read_error_json(raw=raw_json)
+        except Exception as exc:
+            return Response(
+                {"detail": f"Could not parse JSON file: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not records:
+            return Response(
+                {"detail": "No records found in the uploaded JSON."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Re-validate and save
+        from final_summary.extraction.validation import run_validation
+        from final_summary.tasks.process_audit_upload import _save_record
+
+        validated     = run_validation(records)
+        clean         = [r for r in validated if not r.blocking_errors]
+        still_blocked = [r for r in validated if r.blocking_errors]
+
+        saved = 0
+        for record in clean:
+            if _save_record(batch, record):
+                saved += 1
+                batch.processed_files += 1
+                if batch.failed_files > 0:
+                    batch.failed_files -= 1
+
+        if batch.failed_files == 0:
+            batch.status = UploadBatch.Status.COMPLETED
+        elif saved > 0:
+            batch.status = UploadBatch.Status.PARTIAL
+
+        batch.save(update_fields=["processed_files", "failed_files", "status"])
+
+        logger.info(
+            "Retry | batch #%s | submitted=%d | saved=%d | still_blocked=%d",
+            batch_id, len(records), saved, len(still_blocked),
+        )
+
+        return Response({
+            "batch_id":      batch.pk,
+            "submitted":     len(records),
+            "saved":         saved,
+            "still_blocked": [
+                {
+                    "file_name":      r.file_name,
+                    "blocking_errors":r.blocking_errors,
+                    "validation_errors": r.validation_errors,
+                }
+                for r in still_blocked
+            ],
+        })
