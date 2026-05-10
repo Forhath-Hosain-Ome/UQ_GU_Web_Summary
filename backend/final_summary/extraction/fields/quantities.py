@@ -75,6 +75,7 @@ SHIP_QTY_SYNONYMS: list[str] = [
     "audit for shipping qty",
     "exf qty",
     "shipment quantity",
+    "ship qty.",
 ]
 
 AUDIT_QTY_SYNONYMS: list[str] = [

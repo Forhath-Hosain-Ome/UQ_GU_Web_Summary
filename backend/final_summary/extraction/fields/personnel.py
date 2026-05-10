@@ -56,6 +56,8 @@ CARTON_SYNONYMS: list[str] = [
     "our inspection carton",
     "our inspection carton number",
     "carton no",
+    "our inspection carton no",
+    "inspection carton no",
 ]
 _CARTON_DIR = DirectionRule.RIGHT
 

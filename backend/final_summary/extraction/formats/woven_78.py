@@ -15,7 +15,7 @@ and provides a post_process() hook for any remaining corrections.
 """
 
 from pathlib import Path
-
+import re
 from .base import BaseExtractor, AuditRecord
 from final_summary.extraction.core import CellGrid
 
@@ -42,6 +42,13 @@ class Woven78Extractor(BaseExtractor):
            If still empty after extraction, leave as "-" (the default).
         """
         # Ensure report_no is kept as-is even if it's just "01"
+        if not record.carton and record.do_note:
+            m = re.search(
+                r"our inspection carton\s+no[:\s]+(.+)",
+                record.do_note, re.IGNORECASE
+            )
+            if m:
+                record.carton = m.group(1).strip()
         if record.report_no and not record.report_no.strip():
             record.report_no = ""
 

@@ -30,6 +30,7 @@ SYNONYMS: list[str] = [
     "report number",
     "inspection report no",
     "report no.",
+    "report no:",
 ]
 
 # Direction is irrelevant here — resolve_po_or_report_number always scans right.

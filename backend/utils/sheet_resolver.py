@@ -26,6 +26,8 @@ from typing import Optional, Tuple
 # Checked in order — first match wins.
 PREFERRED_KEYWORDS: list[str] = [
     "audit report",
+    "f-a-additional info",
+    "additional info",
     "inspection report",
     "final audit",
 ]
