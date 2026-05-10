@@ -49,7 +49,7 @@ def _resolve(
         if field_name in ("po_wh", "exf", "po_edt", "plan_edt", "plan_wh"):
             return resolve_po_wh_value(grid, label_pos)
 
-        if field_name in ("po_no", "report_no", "audit_report"):
+        if field_name in ("po_no", "report_no"):
             return resolve_po_or_report_number(grid, label_pos, field_name)
 
         return resolve_value(grid, label_pos, direction_rule)
@@ -126,8 +126,23 @@ def extract_fields(
                 # to avoid matching patterns like "(Level-08)" in the label.
                 value = _resolve(grid, (label_row, label_col), direction_rule, field_name)
 
-            elif field_name in ("report_no", "po_no", "audit_report"):
-                value = resolve_po_or_report_number(grid, (label_row, label_col), field_name)
+            elif field_name in ("report_no", "po_no"):
+                # 1) Try Inline first: "Report No: JP..." packed into one cell.
+                # This is more robust than jumping straight to the proximity scanner.
+                cell_text = grid.get(label_row, label_col)
+                for syn in synonyms:
+                    syn_text = syn.value if hasattr(syn, "value") else str(syn)
+                    candidate = find_inline_value(syn_text, cell_text)
+                    if candidate:
+                        # Verify the inline value actually matches a valid pattern
+                        # so we don't 'steal' a label for the wrong field.
+                        from .proximity import is_valid_po_no, is_valid_report_no
+                        if (field_name == "po_no" and is_valid_po_no(candidate)) or \
+                           (field_name == "report_no" and is_valid_report_no(candidate)):
+                            value = candidate
+                            break
+                if not value:
+                    value = resolve_po_or_report_number(grid, (label_row, label_col), field_name)
 
             elif field_name == "po_wh":
                 value = resolve_po_wh_value(grid, (label_row, label_col))

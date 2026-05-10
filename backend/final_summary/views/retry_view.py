@@ -157,7 +157,6 @@ class RetryDownloadView(APIView):
                 "date_of_issue":        str(r.date_of_issue) if r.date_of_issue else "",
                 "inspection_type":      r.inspection_type,
                 "report_no":            r.report_no,
-                "audit_report":         r.audit_report,
                 "item_name":            r.item_name,
                 "style_no":             r.style_no,
                 "po_no":                r.po_no,

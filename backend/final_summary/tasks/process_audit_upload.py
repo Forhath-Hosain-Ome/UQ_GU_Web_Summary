@@ -132,7 +132,6 @@ def _save_record(batch: UploadBatch, record) -> bool:
             date_of_issue         = batch.inspection_date,
             inspection_type       = record.inspection_type or "",
             report_no             = record.report_no or "",
-            audit_report          = record.audit_report or "",
             item_name             = record.item_name or "",
             style_no              = record.style_no or "",
             po_no                 = record.po_no or "",
@@ -231,7 +230,7 @@ def process_audit_upload(
     """
     from final_summary.extraction.formats import get_extractor
     from final_summary.extraction.validation import run_validation
-    from final_summary.utils.sheet_resolver import resolve_sheet_name
+    from utils.sheet_resolver import resolve_sheet_name
 
     try:
         batch = UploadBatch.objects.select_related(
@@ -319,6 +318,11 @@ def process_audit_upload(
                 batch.failed_files += 1
             batch.save(update_fields=["processed_files", "failed_files"])
             _push_progress(batch, stage="SAVING")
+
+        # Save blocked records to DB so they can be downloaded / retried later.
+        # They carry their blocking_errors but are not counted as "processed".
+        for record in blocked:
+            _save_record(batch, record)
 
         # Blocked + extract failures count as failed
         batch.failed_files += len(blocked) + len(extract_failures)

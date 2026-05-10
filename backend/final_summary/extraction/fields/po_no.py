@@ -25,13 +25,11 @@ from final_summary.extraction.core import (
 # ---------------------------------------------------------------------------
 
 SYNONYMS: list[str] = [
-    "po no",
-    "p o no",
-    "po number",
-    "purchase order no",
-    "po no.",
-    "p.o. no",
-    "p.o no",
+    "report number",
+    "report no",
+    "inspection report no",
+    "audit report no",
+    "report no.",
 ]
 
 DIRECTION = DirectionRule.RIGHT

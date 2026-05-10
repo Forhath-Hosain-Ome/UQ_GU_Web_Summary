@@ -10,6 +10,10 @@ import {
   downloadReportPDF as downloadReportPDFImage,
   downloadReportDOCX as downloadReportDOCXImage,
 } from "../../services/defectImageApi";
+import {
+  fetchBatchDetail,
+  downloadErrorJson,
+} from "../../services/finalSummaryApi";
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -75,9 +79,13 @@ async function downloadBoth(report, downloadReportPDFFn, downloadCertificateFn, 
 // the detail page so it can show the right contextual button / auto-trigger there.
 function ReportList({ data, onSelect, action = "view" }) {
   const results = data?.results || data || [];
+
+  // Heuristic to detect if we are listing Audit batches instead of reports
+  const isBatchList = results.length > 0 && results[0].status !== undefined;
+
   const sorted  = [...results].sort((a, b) => {
-    const dateA = a.report_date || a.inspection_date || "";
-    const dateB = b.report_date || b.inspection_date || "";
+    const dateA = a.report_date || a.inspection_date || a.created_at || "";
+    const dateB = b.report_date || b.inspection_date || b.created_at || "";
     if (dateA !== dateB) return dateB.localeCompare(dateA);
     return b.id - a.id;
   });
@@ -90,8 +98,8 @@ function ReportList({ data, onSelect, action = "view" }) {
       {sorted.map((r) => (
         <div
           key={r.id}
-          // Always open detail on row click — action is handled from within the detail view.
-          onClick={() => onSelect(r.id, "view")}
+          // Respect the contextual action passed from the sidebar (view, logs, retry-download)
+          onClick={() => onSelect(r.id, action)}
           style={{
             display: "flex", gap: "12px", padding: "10px 14px",
             background: "var(--color-surface)", borderRadius: "6px",
@@ -102,22 +110,29 @@ function ReportList({ data, onSelect, action = "view" }) {
           onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--color-border)"}
         >
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)", minWidth: "80px" }}>
-            {r.style}
+            {r.style || (isBatchList ? `BATCH #${r.id}` : "N/A")}
           </span>
           <span style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)", flex: 1 }}>
-            {r.factory_name || r.factory_code}
+            {r.factory_name || r.factory_code || (isBatchList ? `Status: ${r.status}` : "Unknown")}
           </span>
-          {r.report_number && (
+          {(r.report_number || (isBatchList && r.processed_files != null)) && (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-accent)", background: "rgba(99,102,241,0.1)", padding: "1px 7px", borderRadius: "3px" }}>
-              #{r.report_number}
+              {r.report_number ? `#${r.report_number}` : `Files: ${r.processed_files}/${r.total_files}`}
             </span>
           )}
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
-            {r.inspection_date}
+            {r.inspection_date || (r.created_at ? new Date(r.created_at).toLocaleDateString() : "")}
           </span>
-          <span style={{ fontFamily: "var(--font-body)", fontSize: "10px", color: "var(--color-muted)" }}>
-            {r.po_numbers?.map((p) => p.number).join(", ")}
-          </span>
+          {r.po_numbers && (
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "10px", color: "var(--color-muted)" }}>
+              {r.po_numbers?.map((p) => p.number).join(", ")}
+            </span>
+          )}
+          {isBatchList && r.pair && (
+            <span style={{ fontFamily: "var(--font-body)", fontSize: "10px", color: "var(--color-muted)" }}>
+              {r.pair.buyer?.name} / {r.pair.factory?.name}
+            </span>
+          )}
           <span style={{ color: "var(--color-muted)", fontSize: "12px" }}>→</span>
         </div>
       ))}
@@ -246,7 +261,9 @@ function ReportDetail({ data }) {
 export default function ReportOutput({ output }) {
   const { setOutput, setLoading, addLog } = useOutputStore();
   const isImage = output?.source === "image";
-  const fetchReportFn = isImage ? fetchReportImage : fetchReportPuma;
+  const isAudit = output?.source === "audit";
+
+  const fetchReportFn = isAudit ? fetchBatchDetail : (isImage ? fetchReportImage : fetchReportPuma);
   const downloadReportPDFFn = isImage ? downloadReportPDFImage : downloadReportPDFPuma;
   const downloadCertificateFn = isImage ? downloadReportDOCXImage : downloadCertificatePuma;
 
@@ -264,6 +281,21 @@ export default function ReportOutput({ output }) {
           addLog({ level: "info", message: `Loaded report ${data.style || data.folder_name || id}` });
         } catch (e) {
           addLog({ level: "error", message: `Failed to load report #${id}` });
+          setLoading(false);
+        }
+        break;
+
+      case "retry-download":
+        setLoading(true);
+        try {
+          addLog({ level: "info", message: `Downloading error JSON for batch #${id}...` });
+          const blob = await downloadErrorJson(id);
+          const filename = `error_batch_${id}_${new Date().toISOString().split('T')[0]}.json`;
+          saveBlob(blob, filename);
+          addLog({ level: "success", message: `Downloaded: ${filename}` });
+          setLoading(false);
+        } catch (e) {
+          addLog({ level: "error", message: `Download failed: ${e.message}` });
           setLoading(false);
         }
         break;

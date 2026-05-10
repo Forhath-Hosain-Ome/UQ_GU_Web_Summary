@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./store/authStore";
 import LoginPage from "./pages/LoginPage";
 import PumaPage  from "./pages/PumaPage";
-import FinalSummaryPage from "./pages/FinalSummaryPage";
+import AuditSummaryPage from "./pages/AuditSummaryPage";
 import DefectImagePage from "./pages/DefectImagePage";
 import Top5Page from "./pages/TopFivePage";
 
@@ -21,40 +21,47 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/puma"
+          <Route path="/login" 
+            element={
+              <LoginPage />
+            } 
+          />
+
+          <Route path="/puma"
             element={
               <RequireAuth>
                 <PumaPage />
               </RequireAuth>
             }
           />
-          <Route
-            path="/image"
+          <Route path="/image"
             element={
               <RequireAuth>
                 <DefectImagePage />
               </RequireAuth>
             }
           />
-          <Route
-            path="/audit"
+          <Route path="/audit/*" 
             element={
               <RequireAuth>
-                <FinalSummaryPage />
+                <AuditSummaryPage />
               </RequireAuth>
-            }
+            } 
           />
-          <Route
-            path="/top-five"
+
+          <Route path="/top-five"
             element={
               <RequireAuth>
                 <Top5Page />
               </RequireAuth>
             }
           />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" 
+            element={
+              <Navigate to="/login" replace />
+            } 
+          />
+
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

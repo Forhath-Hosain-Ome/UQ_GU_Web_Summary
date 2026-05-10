@@ -34,7 +34,7 @@ SYNONYMS: list[str] = [
     "style#",
 ]
 
-DIRECTION = DirectionRule.RIGHT
+DIRECTION = DirectionRule.DOWN
 
 
 # ---------------------------------------------------------------------------

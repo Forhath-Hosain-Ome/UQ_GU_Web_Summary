@@ -78,7 +78,9 @@ def is_valid_report_no(value: str) -> bool:
     if not value:
         return False
     cleaned = value.strip().rstrip(".,;:")
-    return bool(re.match(r"^[A-Z]{2}\d{2}-\d{2}[A-Z0-9]+-\d+$", cleaned))
+    # Use the same flexible pattern as the search engine
+    pat = r"[A-Z]{1,2}\s*\d{0,2}\s*[-\s]?\s*\d{2}\s*[-/]?\s*[A-Z0-9]{2,}\s*[-/]?\s*\d+"
+    return bool(re.search(pat, cleaned, re.IGNORECASE))
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +118,7 @@ def find_inline_value(label_text: str, cell_text: str) -> str:
             parts = cell_text.split(sep, 1)
             if len(parts) == 2:
                 value = parts[1].strip()
-                if value and len(value) > 2:
+                if value and len(value) >= 1:
                     return value
 
     # Newline-separated inline value
@@ -124,7 +126,7 @@ def find_inline_value(label_text: str, cell_text: str) -> str:
         lines = [ln.strip() for ln in re.split(r"[\r\n]+", cell_text) if ln.strip()]
         if len(lines) >= 2 and label_core in lines[0].lower():
             candidate = lines[1].strip()
-            if candidate and len(candidate) > 2:
+            if candidate and len(candidate) >= 1:
                 return candidate
 
     # Simple "LABEL value" with whitespace separator
@@ -135,7 +137,7 @@ def find_inline_value(label_text: str, cell_text: str) -> str:
     )
     if m:
         candidate = m.group(1).strip()
-        if candidate and len(candidate) > 2:
+        if candidate and len(candidate) >= 1:
             return candidate
 
     return ""
@@ -188,15 +190,17 @@ def resolve_value(
 
         if rule == "right":
             for c in range(col + 1, grid.ncols):
-                value = grid.get(row, c)
-                if value:
-                    return value
+                raw = grid.get(row, c)
+                value = str(raw).strip() if raw is not None else ""
+                if value and value not in (":", "-", "|", "_"):
+                    return raw
 
         elif rule == "down":
             for r in range(row + 1, grid.nrows):
-                value = grid.get(r, col)
-                if value:
-                    return value
+                raw = grid.get(r, col)
+                value = str(raw).strip() if raw is not None else ""
+                if value and value not in (":", "-", "|", "_"):
+                    return raw
 
         elif rule == "down_if_int":
             for r in range(row + 1, grid.nrows):
@@ -224,36 +228,47 @@ def resolve_po_or_report_number(
     field_name controls which pattern is accepted:
       "po_no"        → only PO pattern   (P0726-482920-005)
       "report_no"    → only Report pattern (EU26-02CIPL-001)
-      "audit_report" → accept either; fall back to raw value if no pattern matches
     """
     row, col = label_pos
-    logging.debug(f"PO_OR_REPORT: resolving '{field_name}' from ({row}, {col})")
+    
+    # Shared regex patterns for internal searching
+    REPORT_PAT = r"[A-Z]{1,2}\s*\d{0,2}\s*[-\s]?\s*\d{2}\s*[-/]?\s*[A-Z0-9]{2,}\s*[-/]?\s*\d+"
+    PO_PAT     = r"P\d{0,4}[-\s]?\d{6}-\d{3}(?:-\d+)*"
+    
+    # 1. Search Right (including the label cell itself for inline values)
+    # 2. Search Down (BABL formats often put the value below the label)
+    search_coords = []
+    # Right: (row, col) to (row, col+9)
+    for c in range(col, min(col + 10, grid.ncols)):
+        search_coords.append((row, c))
+    # Down: (row+1, col) to (row+5, col)
+    for r in range(row + 1, min(row + 6, grid.nrows)):
+        search_coords.append((r, col))
 
-    for c in range(col + 1, min(col + 10, grid.ncols)):
-        value = grid.get(row, c)
-        if not value:
+    for r_idx, c_idx in search_coords:
+        raw_val = grid.get(r_idx, c_idx)
+        if not raw_val:
             continue
+        
+        value = str(raw_val).strip()
 
-        value = value.strip()
-
+        # Strictly check for the requested pattern. 
+        # If po_no is looking at a Report No label, this will correctly fail and return ""
+        if field_name == "report_no":
+            match_r = re.search(REPORT_PAT, value, re.IGNORECASE)
+            if match_r:
+                found = match_r.group(0).rstrip(".,;:")
+                logging.debug(f"PO_OR_REPORT: Found Report No '{found}' at ({r_idx}, {c_idx})")
+                return found
+        
         if field_name == "po_no":
-            if is_valid_po_no(value):
-                return value
+            match_p = re.search(PO_PAT, value, re.IGNORECASE)
+            if match_p:
+                found = match_p.group(0)
+                logging.debug(f"PO_OR_REPORT: Found PO No '{found}' at ({r_idx}, {c_idx})")
+                return found
 
-        elif field_name == "report_no":
-            cleaned = value.rstrip(".,;:")
-            if is_valid_report_no(value):
-                return cleaned
-
-        elif field_name == "audit_report":
-            if is_valid_po_no(value) or is_valid_report_no(value):
-                if is_valid_report_no(value):
-                    return value.rstrip(".,;:")
-                return value
-            # Fallback: return raw value even without a pattern match
-            return value
-
-    logging.debug(f"PO_OR_REPORT: nothing found to the right for '{field_name}'")
+    logging.debug(f"PO_OR_REPORT: nothing found in proximity for '{field_name}'")
     return ""
 
 

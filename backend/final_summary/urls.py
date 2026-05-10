@@ -22,7 +22,7 @@ Batch tracking:
 
 Retry (Stage 3):
   GET        retry/search/             Search blocked records (date + style)
-  GET        retry/<pk>/download/      Download error JSON for a batch
+   GET        retry/<int:batch_id>/download/      Download error JSON for a batch
   POST       retry/upload/             Upload fixed error JSON
 
 Export:
@@ -87,7 +87,7 @@ urlpatterns = [
 
     # ── Retry / Fix & Retry ───────────────────────────────────────────────────
     path("retry/search/",              RetrySearchView.as_view(),   name="retry_search"),
-    path("retry/<int:pk>/download/",   RetryDownloadView.as_view(), name="retry_download"),
+    path("retry/<int:batch_id>/download/",   RetryDownloadView.as_view(), name="retry_download"),
     path("retry/upload/",              RetryUploadView.as_view(),   name="retry_upload"),
 
     # ── Export ────────────────────────────────────────────────────────────────

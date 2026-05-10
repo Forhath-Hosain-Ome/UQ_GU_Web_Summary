@@ -49,7 +49,7 @@ class AuditReportAdmin(admin.ModelAdmin):
         ("Identity", {
             "fields": (
                 "factory", "client", "date_of_issue", "inspection_type",
-                "report_no", "audit_report", "item_name", "style_no",
+                "report_no", "item_name", "style_no",
                 "po_no", "country",
             ),
         }),

@@ -37,8 +37,8 @@ import re
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Tuple
 
-from ..models.audit_record import AuditRecord
-from ..models.field_enums import FieldName
+from final_summary.models import AuditRecord
+from final_summary.models import FieldName
 
 
 # ---------------------------------------------------------------------------
@@ -136,11 +136,13 @@ def _format_time(time_string: str) -> str:
 
     s = time_string.strip()
 
-    # Reject strings that look like full dates / datetimes
-    if re.match(r"\d{4}[-/]\d{2}[-/]\d{2}", s):
-        logging.info(
-            f"  time field contains datetime '{s}' → set to null"
-        )
+    # If the time string contains a date (common in Excel), strip it and take the time part
+    if " " in s and re.match(r"\d{4}[-/]\d{2}[-/]\d{2}", s):
+        s = s.split(" ", 1)[1]
+    elif "T" in s and re.match(r"\d{4}[-/]\d{2}[-/]\d{2}", s):
+        s = s.split("T", 1)[1]
+    elif re.match(r"^\d{4}[-/]\d{2}[-/]\d{2}$", s):
+        # It's ONLY a date with no time component
         return ""
 
     match = re.search(r"(\d{1,2})[:.]?(\d{2})?\s*([APap][Mm])?", s)

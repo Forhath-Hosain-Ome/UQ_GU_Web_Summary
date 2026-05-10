@@ -23,7 +23,6 @@ base format extractor.
 from .factory_name    import extract as extract_factory
 from .client          import extract as extract_client
 from .report_no       import extract as extract_report_no
-from .audit_report    import extract as extract_audit_report
 from .item_name       import extract as extract_item_name
 from .style_no        import extract as extract_style_no, extract_with_country
 from .po_no           import extract as extract_po_no
@@ -53,7 +52,6 @@ FIELD_EXTRACTORS: dict = {
     "factory":         extract_factory,
     "client":          extract_client,
     "report_no":       extract_report_no,
-    "audit_report":    extract_audit_report,
     "item_name":       extract_item_name,
     "style_no":        extract_style_no,
     "po_no":           extract_po_no,
@@ -65,7 +63,6 @@ __all__ = [
     "extract_factory",
     "extract_client",
     "extract_report_no",
-    "extract_audit_report",
     "extract_item_name",
     "extract_style_no",
     "extract_with_country",

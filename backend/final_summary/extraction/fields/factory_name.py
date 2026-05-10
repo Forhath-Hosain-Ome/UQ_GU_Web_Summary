@@ -29,7 +29,7 @@ SYNONYMS: list[str] = [
     "factory:",
 ]
 
-DIRECTION = DirectionRule.RIGHT
+DIRECTION = DirectionRule.DOWN
 
 
 # ---------------------------------------------------------------------------

@@ -75,7 +75,6 @@ class AuditRecord:
     date_of_issue:   str = ""   # always injected from batch — never extracted
     inspection_type: str = ""
     report_no:       str = ""
-    audit_report:    str = ""
     item_name:       str = ""
     style_no:        str = ""
     po_no:           str = ""

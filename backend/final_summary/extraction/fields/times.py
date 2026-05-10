@@ -37,7 +37,6 @@ FACTORY_IN_SYNONYMS: list[str] = [
     "factory in",
     "in time",
     "factory intime",
-    "f in time",
 ]
 
 FACTORY_OUT_SYNONYMS: list[str] = [
@@ -45,7 +44,6 @@ FACTORY_OUT_SYNONYMS: list[str] = [
     "factory out",
     "out time",
     "factory outtime",
-    "f out time",
 ]
 
 AUDIT_START_SYNONYMS: list[str] = [

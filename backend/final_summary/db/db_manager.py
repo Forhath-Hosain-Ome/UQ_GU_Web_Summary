@@ -190,11 +190,6 @@ class DBManager:
                 "defect_template_id",
                 "INTEGER REFERENCES defect_templates(id) ON DELETE SET NULL",
             ),
-            (
-                "audit_reports",
-                "audit_report_no",
-                "TEXT",
-            ),
         ]
 
         existing: dict = {}
@@ -692,7 +687,7 @@ class DBManager:
                     """
                     INSERT INTO audit_reports (
                         factory_id, client_id, style_id, po_id,
-                        file_name, report_no, audit_report_no,
+                        file_name, report_no,
                         inspection_type, audit_result, date_of_issue,
                         do_qty, ship_qty, audit_qty,
                         defect_qty, acceptable_defect_qty, defect_percentage,
@@ -701,7 +696,7 @@ class DBManager:
                         has_validation_errors, defect_template_id
                     ) VALUES (
                         ?, ?, ?, ?,
-                        ?, ?, ?,
+                        ?, ?,
                         ?, ?, ?,
                         ?, ?, ?,
                         ?, ?, ?,
@@ -714,7 +709,6 @@ class DBManager:
                         factory_id, client_id, style_id, po_id,
                         record.file_name,
                         _v(record.report_no),
-                        _v(record.audit_report),
                         _v(record.inspection_type),
                         _v(record.audit_result) or "-",
                         _to_iso_date(record.date_of_issue),

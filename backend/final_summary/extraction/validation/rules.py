@@ -44,15 +44,15 @@ def is_date_mmddyyyy(value: str) -> bool:
     except ValueError:
         return False
 
-
-_REPORT_NO_RE = re.compile(r"^[A-Z]{2}\d{2}-\d{2}[A-Z0-9]+-\d+$")
-_PO_NO_RE     = re.compile(r"^P\d{4}-\d{6}-\d{3}(-\d+)*$")
+# More flexible regex for validation to match the extraction logic
+_REPORT_NO_RE = re.compile(r"[A-Z]{1,2}\s*\d{0,2}\s*[-\s]?\s*\d{2}\s*[-/]?\s*[A-Z0-9]{2,}\s*[-/]?\s*\d+", re.IGNORECASE)
+_PO_NO_RE     = re.compile(r"^P\d{0,4}[-\s]?\d{6}-\d{3}(?:-\d+)*$")
 
 
 def is_valid_report_no(value: str) -> bool:
     if not value:
         return False
-    return bool(_REPORT_NO_RE.match(value.strip().rstrip(".,;:")))
+    return bool(_REPORT_NO_RE.search(value.strip().rstrip(".,;: ")))
 
 
 def is_valid_po_no(value: str) -> bool:

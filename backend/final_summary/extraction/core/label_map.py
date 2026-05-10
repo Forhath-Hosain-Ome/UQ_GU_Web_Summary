@@ -40,7 +40,6 @@ class FieldName(str, Enum):
     FACTORY         = "factory"
     CLIENT          = "client"
     REPORT_NO       = "report_no"
-    AUDIT_REPORT    = "audit_report"
     ITEM_NAME       = "item_name"
     STYLE_NO        = "style_no"
     PO_NO           = "po_no"

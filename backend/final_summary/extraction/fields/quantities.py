@@ -51,6 +51,8 @@ from final_summary.extraction.core import (
 
 PO_QTY_SYNONYMS: list[str] = [
     "po qty",
+    "p.o qty",
+    "p.o. qty",
     "p o qty",
     "po quantity",
     "p o quantity",
