@@ -48,6 +48,8 @@ _INSTRUCTIONS = (
 
 _VALID_FIELDS = {f.name for f in dataclasses.fields(AuditRecord)}
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Write
@@ -62,23 +64,50 @@ def build_error_payload(
     Returns the dict (caller decides whether to write to file or return as API response).
     """
 
+    from datetime import date
+
+    def _safe_val(v: Any) -> Any:
+        """Coerce non-serializable types to JSON-safe strings/lists/dicts."""
+        if isinstance(v, (datetime, date)):
+            return v.isoformat()
+        if isinstance(v, (list, tuple)):
+            return [_safe_val(x) for x in v]
+        if isinstance(v, dict):
+            return {str(k): _safe_val(v1) for k, v1 in v.items()}
+        if v is not None and not isinstance(v, (str, int, float, bool)):
+            return str(v)
+        return v
+
     def _serialise(r: Any) -> Dict[str, Any]:
         if dataclasses.is_dataclass(r):
             d = dataclasses.asdict(r)
         elif isinstance(r, dict):
             d = dict(r)
         else:
-            logging.warning(f"build_error_payload: unexpected record type {type(r)}")
-            return {}
+            d = {}
+            # Support for Django model instances or other objects by extracting 
+            # attributes matching AuditRecord fields.
+            for f in dataclasses.fields(AuditRecord):
+                val = getattr(r, f.name, None)
+                if val is not None:
+                    d[f.name] = val
+
+        # Fallback if serialization failed or returned empty
+        if not d:
+            logger.warning(f"build_error_payload: could not serialise record type {type(r)}")
+            d = {"file_name": getattr(r, "file_name", "unknown_file")}
 
         # Surface error lists at the top for visibility
-        return {
-            "file_name":            d.pop("file_name", ""),
-            "blocking_errors":      d.pop("blocking_errors", []),
-            "validation_errors":    d.pop("validation_errors", []),
-            "cross_check_warnings": d.pop("cross_check_warnings", []),
-            **d,
+        res: Dict[str, Any] = {
+            "file_name":            _safe_val(d.pop("file_name", "")),
+            "blocking_errors":      list(_safe_val(d.pop("blocking_errors", [])) or []),
+            "validation_errors":    list(_safe_val(d.pop("validation_errors", [])) or []),
+            "cross_check_warnings": list(_safe_val(d.pop("cross_check_warnings", [])) or []),
         }
+        # Coerce remaining fields to safe types
+        for k, v in d.items():
+            res[k] = _safe_val(v)
+        return res
 
     return {
         "version":       _VERSION,
@@ -100,7 +129,7 @@ def write_error_json(
     Returns the number of records written.
     """
     if not records:
-        logging.info("write_error_json: no blocked records — file not written")
+        logger.info("write_error_json: no blocked records — file not written")
         return 0
 
     payload = build_error_payload(records, batch_id)
@@ -109,7 +138,7 @@ def write_error_json(
         json.dumps(payload, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
-    logging.info(
+    logger.info(
         "Error JSON written: %s  (%d blocked record(s))", path, len(records)
     )
     return len(records)
@@ -165,11 +194,11 @@ def read_error_json(path: Optional[Path] = None, raw: Optional[str] = None) -> L
             records.append(record)
         except Exception as exc:
             fname = item.get("file_name", "?")
-            logging.warning(
+            logger.warning(
                 "read_error_json: could not load record '%s': %s", fname, exc
             )
 
-    logging.info(
+    logger.info(
         "read_error_json: loaded %d record(s) from %s",
         len(records), path or "raw string",
     )

@@ -28,7 +28,6 @@ from pathlib import Path
 
 from celery import shared_task
 from django.utils.dateparse import parse_date
-
 from final_summary.models import UploadBatch, AuditReport, DefectEntry
 
 logger = logging.getLogger(__name__)
@@ -128,7 +127,6 @@ def _save_record(batch: UploadBatch, record) -> bool:
             client                = record.client or "",
             client_extracted      = record.client_extracted or "",
             cross_check_warnings  = "\n".join(record.cross_check_warnings or []),
-            # date_of_issue comes from batch.inspection_date
             date_of_issue         = batch.inspection_date,
             inspection_type       = record.inspection_type or "",
             report_no             = record.report_no or "",
@@ -275,30 +273,62 @@ def process_audit_upload(
         extracted        = []
         extract_failures = []
 
+        # ── Resolve target sheets per inspection type from the pair ──────
+        target_reports = batch.pair.available_reports or ["FINAL", "RE_FINAL", "INLINE"]
+        # Fallback if available_reports is empty
+        if not target_reports:
+            target_reports = ["FINAL", "RE_FINAL", "INLINE"]
+
+        extracted        = []   # <-- already declared above, keep the list
+        extract_failures = []   # <-- already declared above, keep the list
+
+        import openpyxl
+
         for excel_path in excel_files:
-            sheet_name, reason = resolve_sheet_name(excel_path)
+            logger.debug("Processing file: %s", excel_path.name)
+            logger.debug("  Full path: %s", excel_path)
+            # Get actual sheet names from the workbook
+            wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
+            available_sheets = wb.sheetnames
+            wb.close()
 
-            if sheet_name is None:
-                msg = f"{excel_path.name}: {reason}"
-                logger.error("Extraction skipped — %s", msg)
-                extract_failures.append(msg)
-                continue
-
-            logger.info("Extracting '%s' via %s", excel_path.name, reason)
-
-            try:
-                record = extractor.extract(
-                    path=excel_path,
-                    sheet_name=sheet_name,
-                    inspection_date=inspection_date,
-                    pair=pair,
+            # Find sheets that match the target inspection types (case‑insensitive)
+            sheets_to_process = []
+            for report_type in target_reports:
+                # Many reports have sheet names like "Final", "Re-Final", "INLINE"
+                match = next(
+                    (s for s in available_sheets if s.lower() == report_type.lower()),
+                    None,
                 )
-                extracted.append(record)
-            except Exception as exc:
-                msg = f"{excel_path.name}: {exc}"
-                logger.exception("Extraction failed — %s", msg)
-                extract_failures.append(msg)
+                if match:
+                    sheets_to_process.append(match)
 
+            # If no matching sheet found, fall back to the first sheet
+            if not sheets_to_process:
+                logger.warning("  No matching sheets found for %s", excel_path.name)
+                logger.warning("    Available sheets: %s", available_sheets)
+                sheets_to_process = [available_sheets[0]]
+
+            for sheet_name in sheets_to_process:
+                try:
+                    logger.info("  -> Extracting %s sheet: '%s'", excel_path.name, sheet_name)
+                    record = extractor.extract(
+                        path=excel_path,
+                        sheet_name=sheet_name,
+                        inspection_date=inspection_date,
+                        pair=pair,
+                    )
+                    # Make file_name unique per sheet so duplicates aren't skipped
+                    record.file_name = f"{excel_path.name} ({sheet_name})"
+                    extracted.append(record)
+                except Exception as exc:
+                    msg = f"{excel_path.name} ({sheet_name}): {exc}"
+                    logger.exception("Extraction failed – %s", msg)
+                    extract_failures.append(msg)
+
+        # Update total after extraction — we now know exactly how many records
+        batch.total_files = len(extracted)
+        batch.save(update_fields=["total_files"])
         _push_progress(batch, stage="VALIDATING")
 
         # ── Stage 2: Validate ─────────────────────────────────────────────

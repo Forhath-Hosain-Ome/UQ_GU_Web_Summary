@@ -40,6 +40,8 @@ from typing import Any, Callable, Dict, List, Tuple
 from final_summary.models import AuditRecord
 from final_summary.models import FieldName
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Layer 1 + 2 : Date stripping and formatting
@@ -87,7 +89,7 @@ def _strip_time_from_date(value: str) -> str:
     if _DATETIME_RE.match(s):
         # Keep everything before the first space or T
         stripped = re.split(r"[\sT]", s, maxsplit=1)[0]
-        logging.info(f"  date stripped of time component: '{s}' → '{stripped}'")
+        logger.info(f"  date stripped of time component: '{s}' → '{stripped}'")
         return stripped
     return s
 
@@ -110,7 +112,7 @@ def _format_date(date_string: str) -> str:
         except ValueError:
             continue
 
-    logging.warning(f"Date format not recognised: '{date_string}'")
+    logger.warning(f"Date format not recognised: '{date_string}'")
     return date_string
 
 
@@ -147,15 +149,15 @@ def _format_time(time_string: str) -> str:
 
     match = re.search(r"(\d{1,2})[:.]?(\d{2})?\s*([APap][Mm])?", s)
     if not match:
-        logging.info(f"  time field '{s}' not parseable → set to null")
+        logger.info(f"  time field '{s}' not parseable → set to null")
         return ""
 
     hour_str, minute_str, am_pm = match.groups()
     hour   = int(hour_str)
     minute = int(minute_str) if minute_str else 0
 
-    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        logging.info(
+    if not (0 <= hour <= 23 and 0 <= minute <= 59): # type: ignore
+        logger.info(
             f"  time field '{s}' out of range → set to null"
         )
         return ""
@@ -170,7 +172,7 @@ def _format_time(time_string: str) -> str:
     try:
         return datetime.strptime(f"{hour}:{minute}", "%H:%M").strftime("%I:%M %p")
     except ValueError:
-        logging.info(f"  time field '{s}' failed strptime → set to null")
+        logger.info(f"  time field '{s}' failed strptime → set to null")
         return ""
 
 
@@ -298,8 +300,8 @@ def apply_refinement_rules(record: AuditRecord) -> AuditRecord:
         if not raw:
             continue
         refined = formatter(raw)
-        if refined != raw:
-            logging.info(f"  refined [{field_name}]: '{raw}' → '{refined}'")
+        if refined != raw: # type: ignore
+            logger.info(f"  refined [{field_name}]: '{raw}' → '{refined}'")
         setattr(record, field_name, refined)
     return record
 
@@ -337,7 +339,7 @@ def validate_blocking(record: AuditRecord) -> AuditRecord:
         val = getattr(record, field_key, None)
         if not val or not str(val).strip():
             errors.append(f"REQUIRED_FIELD | {field_key} | {msg}")
-            logging.warning(f"[{record.file_name}] BLOCKING: {msg}")
+            logger.warning(f"[{record.file_name}] BLOCKING: {msg}")
 
     # Check 2: defect count integrity
     if record.defect_qty and record.defect_rows:
@@ -355,7 +357,7 @@ def validate_blocking(record: AuditRecord) -> AuditRecord:
                     f"extracted defect rows sum to {extracted_sum}"
                 )
                 errors.append(msg)
-                logging.warning(f"[{record.file_name}] BLOCKING: {msg}")
+                logger.warning(f"[{record.file_name}] BLOCKING: {msg}")
         except (ValueError, TypeError):
             pass   # can't compare — don't block on this
 
@@ -368,7 +370,7 @@ def validate_blocking_all(records: List[AuditRecord]) -> List[AuditRecord]:
     for r in records:
         validate_blocking(r)
     blocked = sum(1 for r in records if r.blocking_errors)
-    logging.info(f"Blocking validation: {blocked}/{len(records)} records blocked")
+    logger.info(f"Blocking validation: {blocked}/{len(records)} records blocked")
     return records
 
 
@@ -394,18 +396,18 @@ def validate_record(record: AuditRecord) -> AuditRecord:
             if not rule_fn(value):
                 full_msg = f"'{field_name}': {error_msg}"
                 errors.append(full_msg)
-                logging.warning(
+                logger.warning(
                     f"Validation [{record.file_name}] – {full_msg}"
                 )
 
     record.validation_errors.extend(errors)
 
     if errors:
-        logging.warning(
+        logger.warning(
             f"[{record.file_name}] {len(errors)} validation error(s)"
         )
     else:
-        logging.info(f"[{record.file_name}] passed all validations")
+        logger.info(f"[{record.file_name}] passed all validations")
 
     return record
 
@@ -419,18 +421,18 @@ def validate_all_records(records: List[AuditRecord]) -> List[AuditRecord]:
     Validate every record and log a summary.
     Returns the same list with validation_errors populated.
     """
-    logging.info("=" * 60)
-    logging.info("VALIDATION PHASE")
-    logging.info("=" * 60)
+    logger.info("=" * 60)
+    logger.info("VALIDATION PHASE")
+    logger.info("=" * 60)
 
     validated = [validate_record(r) for r in records]
 
     files_with_errors = sum(1 for r in validated if r.validation_errors)
     total_errors      = sum(len(r.validation_errors) for r in validated)
 
-    logging.info(f"Total validated  : {len(records)}")
-    logging.info(f"Files with errors: {files_with_errors}")
-    logging.info(f"Total errors     : {total_errors}")
-    logging.info("=" * 60)
+    logger.info(f"Total validated  : {len(records)}")
+    logger.info(f"Files with errors: {files_with_errors}")
+    logger.info(f"Total errors     : {total_errors}")
+    logger.info("=" * 60)
 
     return validated

@@ -116,7 +116,7 @@ def extract_from_filename(
 # Main extractor
 # ---------------------------------------------------------------------------
 
-def extract(grid: CellGrid, path: Optional[Path] = None) -> str:
+def extract(grid: CellGrid, path: Optional[Path] = None, format_type: str = "") -> str:
     """
     Stage 1: scan the grid for the inspection type label.
     Stage 2: fall back to file-name inference if stage 1 yields nothing.

@@ -22,7 +22,6 @@ mkdir -p /tmp/batch_uploads
 # Even if volumes are mounted from host with root ownership, this fixes it
 chown -R 1001:1001 /app/media /app/logs /tmp/batch_uploads 2>/dev/null || chmod -R 777 /app/media /app/logs /tmp/batch_uploads
 
-
 # 1. Wait for Postgres to be ready (Prevents migration crashes)
 echo "Waiting for database..."
 # If you have 'netcat' installed in your Dockerfile, you can use:

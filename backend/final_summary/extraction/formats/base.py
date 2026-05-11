@@ -53,6 +53,8 @@ from final_summary.extraction.fields import (
     extract_type_from_filename,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # AuditRecord dataclass — the extraction result
@@ -75,7 +77,6 @@ class AuditRecord:
     date_of_issue:   str = ""   # always injected from batch — never extracted
     inspection_type: str = ""
     report_no:       str = ""
-    audit_report:    str = ""
     item_name:       str = ""
     style_no:        str = ""
     po_no:           str = ""
@@ -193,14 +194,17 @@ class BaseExtractor:
         # ── Step 2: single-value fields ────────────────────────────────────
         for field_name, extractor_fn in self._field_extractors().items():
             try:
-                # Only pass the grid initially to prevent premature 
+                # Only pass the grid initially to prevent premature
                 # filename fallbacks inside the field extractors
                 value = extractor_fn(grid, format_type=self.REPORT_TYPE)
                 if value:
                     setattr(record, field_name, value)
+                    logger.info(f"  [{field_name}] -> '{value}'")
+                else:
+                    logger.info(f"  [{field_name}] -> Not found on primary sheet")
             except Exception as exc:
-                logging.warning(
-                    f"[{path.name}] Field '{field_name}' extraction failed: {exc}"
+                logger.error(
+                    f"[{path.name}] Field '{field_name}' extraction EXCEPTION: {exc}"
                 )
 
         # ── Step 3: style_no + country ─────────────────────────────────────
@@ -209,60 +213,77 @@ class BaseExtractor:
             if style:
                 record.style_no = style
                 record.country  = country
+                logger.info(f"  [style_no] -> '{style}'")
+                logger.info(f"  [country] -> '{country}'")
+            else:
+                logger.info(f"  [style_no] -> Not found on primary sheet")
         except Exception as exc:
-            logging.warning(f"[{path.name}] style/country extraction failed: {exc}")
+            logger.error(f"[{path.name}] style/country extraction FAILED: {exc}")
 
         # ── Step 4: times ──────────────────────────────────────────────────
         try:
             times = self._extract_times(grid, path)
             for k, v in times.items():
-                if v:
+                if v and str(v).strip():
                     setattr(record, k, v)
+                    logger.info(f"  [{k}] -> '{v}'")
         except Exception as exc:
-            logging.warning(f"[{path.name}] Times extraction failed: {exc}")
+            logger.error(f"[{path.name}] Times extraction FAILED: {exc}")
 
         # ── Step 5: dates ──────────────────────────────────────────────────
         try:
             dates = self._extract_dates(grid, path)
             for k, v in dates.items():
-                if v:
+                if v and str(v).strip():
                     setattr(record, k, v)
+                    logger.info(f"  [{k}] -> '{v}'")
         except Exception as exc:
-            logging.warning(f"[{path.name}] Dates extraction failed: {exc}")
+            logger.error(f"[{path.name}] Dates extraction FAILED: {exc}")
 
         # ── Step 6: quantities ─────────────────────────────────────────────
         try:
             qtys = self._extract_quantities(grid, path, self.REPORT_TYPE)
             for k, v in qtys.items():
-                if v:
+                if v and str(v).strip():
                     setattr(record, k, v)
+                    logger.info(f"  [{k}] -> '{v}'")
         except Exception as exc:
-            logging.warning(f"[{path.name}] Quantities extraction failed: {exc}")
+            logger.error(f"[{path.name}] Quantities extraction FAILED: {exc}")
 
         # ── Step 7: personnel ──────────────────────────────────────────────
         try:
             pers = self._extract_personnel(grid, path)
             for k, v in pers.items():
-                if v:
+                if v and str(v).strip():
                     setattr(record, k, v)
+                    logger.info(f"  [{k}] -> '{v}'")
         except Exception as exc:
-            logging.warning(f"[{path.name}] Personnel extraction failed: {exc}")
+            logger.error(f"[{path.name}] Personnel extraction FAILED: {exc}")
 
         # ── Step 7b: fill missing fields from other sheets ─────────────────────
         try:
             self._fill_missing_from_all_sheets(record, path)
         except Exception as exc:
-            logging.warning(f"[{path.name}] Multi-sheet fill failed: {exc}")
+            logger.error(f"[{path.name}] Multi-sheet fill FAILED: {exc}")
+
+        # ── Step 7c: Final Field Presence Validation ──────────────────────
+        # Explicitly log errors for critical missing fields after all steps
+        for field_name in ["factory", "client", "report_no", "ship_qty", "audit_qty"]:
+            val = getattr(record, field_name, "")
+            if not val or not str(val).strip():
+                logger.error(f"  [CRITICAL ERROR] Field '{field_name}' is MISSING after full workbook scan")
 
         # ── Step 8: defects ────────────────────────────────────────────────
         try:
             defect_rows, defect_totals = self._extract_defects(path, sheet_name)
             record.defect_rows = defect_rows
+            logger.info(f"  [defects] -> extracted {len(defect_rows)} rows")
             # Use defect table major total if header extraction missed it
             if not record.defect_qty and defect_totals.get("major"):
                 record.defect_qty = str(defect_totals["major"])
+                logger.info(f"  [defect_qty] -> '{record.defect_qty}' (from table)")
         except Exception as exc:
-            logging.warning(f"[{path.name}] Defects extraction failed: {exc}")
+            logger.error(f"[{path.name}] Defects extraction FAILED: {exc}")
 
         # ── Step 9: DO table ───────────────────────────────────────────────
         try:
@@ -270,15 +291,17 @@ class BaseExtractor:
             record.do_orders = do_data.get("do_orders", [])
             record.do_totals = do_data.get("do_totals", {})
             record.do_note   = do_data.get("do_note", "")
+            logger.info(f"  [do_table] -> extracted {len(record.do_orders)} rows")
             # Fallback: use DO totals for missing ship_qty
-            if not record.ship_qty and record.do_totals.get("ship_qty"):
+            if (not record.ship_qty or not str(record.ship_qty).strip()) and record.do_totals.get("ship_qty"):
                 record.ship_qty = str(record.do_totals["ship_qty"])
-                logging.info(f"[{path.name}] ship_qty filled from DO totals: {record.ship_qty}")
+                logger.info(f"  [ship_qty] -> '{record.ship_qty}' (from DO table)")
         except Exception as exc:
-            logging.warning(f"[{path.name}] DO table extraction failed: {exc}")
+            logger.error(f"[{path.name}] DO table extraction FAILED: {exc}")
 
         # ── Step 10: inject inspection_date ───────────────────────────────
         record.date_of_issue = inspection_date.strftime("%m/%d/%Y")
+        logger.info(f"  [date_of_issue] -> '{record.date_of_issue}' (injected)")
 
         # ── Inspection type fallback from file name ─────────────────────────
         if not record.inspection_type:
@@ -287,6 +310,7 @@ class BaseExtractor:
                 audit_qty=record.audit_qty,
                 ship_qty=record.ship_qty,
             )
+            logger.info(f"  [inspection_type] -> '{record.inspection_type}' (filename fallback)")
 
         # ── Step 11: format-specific post-processing ───────────────────────
         record = self.post_process(record, grid, path)
@@ -330,8 +354,8 @@ class BaseExtractor:
         if not missing_single and not need_times and not need_dates and not need_quantities:
             return
 
-        logging.info(f"[{path.name}] Scanning all sheets for missing fields: "
-                    f"single={missing_single} times={need_times} dates={need_dates} qtys={need_quantities}")
+        logger.info(f"[{path.name}] Scanning all sheets for missing fields: "
+                   f"single={missing_single} times={need_times} dates={need_dates} qtys={need_quantities}")
 
         all_dfs = read_all_sheets(path)
 
@@ -351,7 +375,7 @@ class BaseExtractor:
                     if value:
                         setattr(record, field_name, value)
                         missing_single.discard(field_name)
-                        logging.info(f"  [{field_name}] found on sheet {sheet_idx + 1}: '{value}'")
+                        logger.info(f"  [{field_name}] found on sheet {sheet_idx + 1}: '{value}'")
                 except Exception:
                     pass
 
@@ -359,8 +383,9 @@ class BaseExtractor:
             if need_times:
                 times = extract_times_fn(grid, path)
                 for k, v in times.items():
-                    if v and not getattr(record, k, ""):
+                    if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
+                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
                 need_times = not any([
                     record.factory_in_time, record.factory_out_time,
                     record.audit_start_time, record.audit_end_time,
@@ -370,16 +395,18 @@ class BaseExtractor:
             if need_dates:
                 dates = extract_dates_fn(grid, path)
                 for k, v in dates.items():
-                    if v and not getattr(record, k, ""):
+                    if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
+                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
                 need_dates = not any([record.exf, record.po_edt, record.po_wh])
 
             # Quantities
             if need_quantities:
                 qtys = extract_quantities_fn(grid, path, format_type=self.REPORT_TYPE)
                 for k, v in qtys.items():
-                    if v and not getattr(record, k, ""):
+                    if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
+                    logging.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
                 need_quantities = not record.ship_qty
     def _read_sheet(self, path: Path, sheet_name: str):
         """Load the sheet DataFrame. Override to apply skiprows etc."""
@@ -451,7 +478,7 @@ class BaseExtractor:
                 f"registered='{pair.factory.name}'"
             )
             record.cross_check_warnings.append(warn)
-            logging.warning(f"[{record.file_name}] {warn}")
+            logger.error(f"[{record.file_name}] {warn}")
 
         if extracted_client and extracted_client != registered_buyer:
             warn = (
@@ -460,7 +487,13 @@ class BaseExtractor:
                 f"registered='{pair.buyer.name}'"
             )
             record.cross_check_warnings.append(warn)
-            logging.warning(f"[{record.file_name}] {warn}")
+            logger.error(f"[{record.file_name}] {warn}")
+
+        # Log extracted and final names
+        logger.info(f"  [factory_extracted] -> '{record.factory_extracted}'")
+        logger.info(f"  [client_extracted] -> '{record.client_extracted}'")
+        logger.info(f"  [factory] -> '{pair.factory.name}' (canonical)")
+        logger.info(f"  [client] -> '{pair.buyer.name}' (canonical)")
 
         # Use registered names as the canonical values
         record.factory = pair.factory.name

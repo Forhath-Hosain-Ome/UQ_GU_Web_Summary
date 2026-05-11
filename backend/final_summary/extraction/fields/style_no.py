@@ -41,7 +41,7 @@ DIRECTION = DirectionRule.DOWN
 # Extractor
 # ---------------------------------------------------------------------------
 
-def extract(grid: CellGrid, path: Optional[Path] = None) -> str:
+def extract(grid: CellGrid, path: Optional[Path] = None, format_type: str = "") -> str:
     """
     Find the style number label and return the value to its right.
 
@@ -72,6 +72,7 @@ def extract(grid: CellGrid, path: Optional[Path] = None) -> str:
 def extract_with_country(
     grid: CellGrid,
     path: Optional[Path] = None,
+    format_type: str = "",
 ) -> Tuple[str, str]:
     """
     Return (style_no, country) derived from the style number.
@@ -89,7 +90,7 @@ def extract_with_country(
     -------
     (style_no, country) — both strings, never None.
     """
-    style = extract(grid, path)
+    style = extract(grid, path, format_type)
     if not style or len(style) < 2:
         return style, "UNKNOWN"
     country = STYLE_COUNTRY_MAP.get(style[:2].upper(), "UNKNOWN")

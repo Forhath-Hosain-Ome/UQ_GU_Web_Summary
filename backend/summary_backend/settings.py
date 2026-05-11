@@ -248,31 +248,75 @@ class AppUserDateHandler(logging.Handler):
             print(self.format(record), file=sys.stderr)
 
 LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "standard": {
-            "format": "{asctime} [{levelname}] {name}: {message}",
-            "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{asctime} [{levelname}] {name}: {message}',
+            'style': '{',
+        },
+        'extraction': {
+            'format': '{asctime} [{levelname}] {message}',
+            'style': '{',
         },
     },
-    "handlers": {
-        "console": {
-            "level": "DEBUG",
-            "class": "logging.StreamHandler",
-            "formatter": "standard",
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
         },
-        "app_user_date": {
-            "()": AppUserDateHandler,
-            "formatter": "standard",
+        'file_app': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'app.log'),
+            'maxBytes': 10485760,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'extraction',
+        },
+        'file_final_summary': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'final_summary', 'extraction.log'),
+            'maxBytes': 10485760,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'extraction',
         },
     },
-    "loggers": {
-        "puma_summary":    {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
-        "image_processor": {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
-        "final_summary":   {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
-        "top_five":       {"handlers": ["app_user_date", "console"], "level": "INFO", "propagate": False},
+    'root': {
+        'handlers': ['console', 'file_app'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file_app'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'final_summary': {
+            'handlers': ['console', 'file_final_summary', 'file_app'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'final_summary.tasks': {
+            'handlers': ['console', 'file_final_summary', 'file_app'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'final_summary.extraction': {
+            'handlers': ['console', 'file_final_summary', 'file_app'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console', 'file_app'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
 

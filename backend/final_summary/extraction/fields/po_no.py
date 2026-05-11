@@ -39,7 +39,7 @@ DIRECTION = DirectionRule.RIGHT
 # Extractor
 # ---------------------------------------------------------------------------
 
-def extract(grid: CellGrid, path: Optional[Path] = None) -> str:
+def extract(grid: CellGrid, path: Optional[Path] = None, format_type: str = "") -> str:
     """
     Find the PO number label and return a validated PO number.
 

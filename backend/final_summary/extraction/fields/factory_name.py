@@ -36,7 +36,7 @@ DIRECTION = DirectionRule.DOWN
 # Extractor
 # ---------------------------------------------------------------------------
 
-def extract(grid: CellGrid, path: Optional[Path] = None) -> str:
+def extract(grid: CellGrid, path: Optional[Path] = None, format_type: str = "") -> str:
     """
     Find the factory name label and return the value to its right.
 
