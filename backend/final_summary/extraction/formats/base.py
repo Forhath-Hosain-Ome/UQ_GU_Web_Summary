@@ -193,7 +193,9 @@ class BaseExtractor:
         # ── Step 2: single-value fields ────────────────────────────────────
         for field_name, extractor_fn in self._field_extractors().items():
             try:
-                value = extractor_fn(grid, path)
+                # Only pass the grid initially to prevent premature 
+                # filename fallbacks inside the field extractors
+                value = extractor_fn(grid, format_type=self.REPORT_TYPE)
                 if value:
                     setattr(record, field_name, value)
             except Exception as exc:
@@ -230,7 +232,7 @@ class BaseExtractor:
 
         # ── Step 6: quantities ─────────────────────────────────────────────
         try:
-            qtys = self._extract_quantities(grid, path)
+            qtys = self._extract_quantities(grid, path, self.REPORT_TYPE)
             for k, v in qtys.items():
                 if v:
                     setattr(record, k, v)
@@ -245,6 +247,12 @@ class BaseExtractor:
                     setattr(record, k, v)
         except Exception as exc:
             logging.warning(f"[{path.name}] Personnel extraction failed: {exc}")
+
+        # ── Step 7b: fill missing fields from other sheets ─────────────────────
+        try:
+            self._fill_missing_from_all_sheets(record, path)
+        except Exception as exc:
+            logging.warning(f"[{path.name}] Multi-sheet fill failed: {exc}")
 
         # ── Step 8: defects ────────────────────────────────────────────────
         try:
@@ -262,6 +270,10 @@ class BaseExtractor:
             record.do_orders = do_data.get("do_orders", [])
             record.do_totals = do_data.get("do_totals", {})
             record.do_note   = do_data.get("do_note", "")
+            # Fallback: use DO totals for missing ship_qty
+            if not record.ship_qty and record.do_totals.get("ship_qty"):
+                record.ship_qty = str(record.do_totals["ship_qty"])
+                logging.info(f"[{path.name}] ship_qty filled from DO totals: {record.ship_qty}")
         except Exception as exc:
             logging.warning(f"[{path.name}] DO table extraction failed: {exc}")
 
@@ -288,7 +300,87 @@ class BaseExtractor:
     # ------------------------------------------------------------------
     # Overridable extraction methods
     # ------------------------------------------------------------------
+    def _fill_missing_from_all_sheets(self, record: AuditRecord, path: Path) -> None:
+        """
+        For every field still empty after main extraction, scan ALL sheets
+        and fill in any values found. This is how the BABL format works —
+        times, dates, report_no, ship_qty live on 'F-A-ADDITIONAL INFO',
+        not on the defect sheet that the sheet resolver picks.
+        """
+        from final_summary.extraction.fields import FIELD_EXTRACTORS
+        from final_summary.extraction.core import read_all_sheets, CellGrid
+        from final_summary.extraction.core import resolve_po_wh_value, to_display_date
+        from final_summary.extraction.fields.times import extract as extract_times_fn
+        from final_summary.extraction.fields.dates import extract as extract_dates_fn
+        from final_summary.extraction.fields.quantities import extract as extract_quantities_fn
 
+        # Collect which single-value fields are still empty
+        missing_single = {
+            name for name in FIELD_EXTRACTORS
+            if not getattr(record, name, "")
+        }
+        # Also check multi-value groups
+        need_times = not any([
+            record.factory_in_time, record.factory_out_time,
+            record.audit_start_time, record.audit_end_time,
+        ])
+        need_dates = not any([record.exf, record.po_edt, record.po_wh])
+        need_quantities = not record.ship_qty
+
+        if not missing_single and not need_times and not need_dates and not need_quantities:
+            return
+
+        logging.info(f"[{path.name}] Scanning all sheets for missing fields: "
+                    f"single={missing_single} times={need_times} dates={need_dates} qtys={need_quantities}")
+
+        all_dfs = read_all_sheets(path)
+
+        for sheet_idx, df in enumerate(all_dfs):
+            if not missing_single and not need_times and not need_dates and not need_quantities:
+                break
+
+            grid = CellGrid(df)
+
+            # Single-value fields
+            for field_name in list(missing_single):
+                fn = FIELD_EXTRACTORS.get(field_name)
+                if not fn:
+                    continue
+                try:
+                    value = fn(grid, format_type=self.REPORT_TYPE)
+                    if value:
+                        setattr(record, field_name, value)
+                        missing_single.discard(field_name)
+                        logging.info(f"  [{field_name}] found on sheet {sheet_idx + 1}: '{value}'")
+                except Exception:
+                    pass
+
+            # Times
+            if need_times:
+                times = extract_times_fn(grid, path)
+                for k, v in times.items():
+                    if v and not getattr(record, k, ""):
+                        setattr(record, k, v)
+                need_times = not any([
+                    record.factory_in_time, record.factory_out_time,
+                    record.audit_start_time, record.audit_end_time,
+                ])
+
+            # Dates
+            if need_dates:
+                dates = extract_dates_fn(grid, path)
+                for k, v in dates.items():
+                    if v and not getattr(record, k, ""):
+                        setattr(record, k, v)
+                need_dates = not any([record.exf, record.po_edt, record.po_wh])
+
+            # Quantities
+            if need_quantities:
+                qtys = extract_quantities_fn(grid, path, format_type=self.REPORT_TYPE)
+                for k, v in qtys.items():
+                    if v and not getattr(record, k, ""):
+                        setattr(record, k, v)
+                need_quantities = not record.ship_qty
     def _read_sheet(self, path: Path, sheet_name: str):
         """Load the sheet DataFrame. Override to apply skiprows etc."""
         return read_sheet(path, sheet_name=sheet_name)
@@ -309,8 +401,8 @@ class BaseExtractor:
     def _extract_dates(self, grid: CellGrid, path: Path) -> dict:
         return extract_dates(grid, path)
 
-    def _extract_quantities(self, grid: CellGrid, path: Path) -> dict:
-        return extract_quantities(grid, path)
+    def _extract_quantities(self, grid: CellGrid, path: Path, format_type: str = "") -> dict:
+        return extract_quantities(grid, path, format_type)
 
     def _extract_personnel(self, grid: CellGrid, path: Path) -> dict:
         return extract_personnel(grid, path)

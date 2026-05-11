@@ -196,25 +196,32 @@ def extract(
         logging.error(f"defects.extract: cannot open '{path.name}': {exc}")
         return [], {}
 
-    # Resolve sheet
-    if sheet_name and sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-    else:
-        match = next(
-            (s for s in wb.sheetnames
-             if s.lower() == (sheet_name or "").lower()),
-            None,
-        )
-        ws = wb[match] if match else wb[wb.sheetnames[0]]
+    # Search order: use sheet_name if provided, otherwise check all sheets
+    sheet_names = wb.sheetnames
+    search_order = []
+    if sheet_name and sheet_name in sheet_names:
+        search_order.append(sheet_name)
+    search_order.extend([s for s in sheet_names if s not in search_order])
 
-    rows = list(ws.iter_rows(values_only=True))
+    rows = []
+    header_info = (None, None, None, None, None)
+
+    for s_name in search_order:
+        ws = wb[s_name]
+        temp_rows = list(ws.iter_rows(values_only=True))
+        res = _find_header(temp_rows)
+        if res[0] is not None:
+            header_info = res
+            rows = temp_rows
+            logging.info(f"[{path.name}] Defect table found on sheet '{s_name}'")
+            break
+
     wb.close()
 
-    # Discover header
-    header_idx, item_col, major_col, minor_col, comment_col = _find_header(rows)
+    header_idx, item_col, major_col, minor_col, comment_col = header_info
 
     if header_idx is None:
-        logging.warning(f"[{path.name}] Defect header row not found.")
+        logging.warning(f"[{path.name}] Defect header row not found in any sheet.")
         return [], {}
 
     if major_col is None:

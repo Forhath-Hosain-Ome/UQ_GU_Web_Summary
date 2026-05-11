@@ -1,4 +1,5 @@
 /**
+ * AuditOutput.jsx
  * ----------------
  * Rendered by OutputPanel when output.source === "audit".
  *
@@ -405,10 +406,17 @@ function AuditBatchRow({ batch, action, onAction }) {
     ? `${batch.pair.buyer?.name ?? ""} × ${batch.pair.factory?.name ?? ""}`
     : batch.pair_display ?? `Pair #${batch.pair_id}`;
   const date = batch.inspection_date ?? "—";
+  const hasErrors = batch.status === "PARTIAL" || batch.status === "FAILED";
+
+  // When this list is rendered in "retry-download" context (from the sidebar),
+  // row click downloads the error JSON directly instead of navigating to detail.
+  const isRetryContext = action === "retry-download";
+  const handleRowClick = () =>
+    isRetryContext ? onAction("retry-download", batch.id) : onAction("view", batch.id);
 
   return (
     <div
-      onClick={() => onAction("view", batch.id)}
+      onClick={handleRowClick}
       style={{
         display: "grid", gridTemplateColumns: "52px 1fr 90px 100px 90px 80px 96px",
         gap: "8px", padding: "10px 14px",
@@ -440,15 +448,26 @@ function AuditBatchRow({ batch, action, onAction }) {
         {batch.success_rate ?? "—"}%
       </span>
       <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
-        {/* View */}
-        <IconBtn title="View detail" onClick={() => onAction("view", batch.id)}>◎</IconBtn>
-        {/* Logs */}
-        <IconBtn title="Batch logs" onClick={() => onAction("logs", batch.id)}>∷</IconBtn>
-        {/* Download error JSON */}
-        {(batch.status === "PARTIAL" || batch.status === "FAILED") && (
-          <IconBtn title="Download error JSON" color="var(--color-warning)" onClick={() => onAction("retry-download", batch.id)}>
-            ⬇
-          </IconBtn>
+        {isRetryContext ? (
+          /* In retry-download context: only show the download button */
+          <IconBtn
+            title={hasErrors ? "Download error JSON" : "No blocked records"}
+            color={hasErrors ? "var(--color-warning)" : undefined}
+            disabled={!hasErrors}
+            onClick={() => onAction("retry-download", batch.id)}
+          >⬇</IconBtn>
+        ) : (
+          <>
+            <IconBtn title="View detail" onClick={() => onAction("view", batch.id)}>◎</IconBtn>
+            <IconBtn title="Batch logs" onClick={() => onAction("logs", batch.id)}>∷</IconBtn>
+            {hasErrors && (
+              <IconBtn
+                title="Download error JSON"
+                color="var(--color-warning)"
+                onClick={() => onAction("retry-download", batch.id)}
+              >⬇</IconBtn>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -728,6 +747,49 @@ function ExportView({ data }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Small helper: download error JSON for a single batch_id
+// Used inside RetrySearchView results so user can act immediately.
+// ─────────────────────────────────────────────────────────────────────────────
+function DownloadErrBtn({ batchId, addLog }) {
+  const [busy, setBusy] = useState(false);
+
+  const handleDownload = async (e) => {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    addLog({ level: "info", message: `Downloading error JSON for Batch #${batchId}…` });
+    try {
+      const payload = await downloadErrorJson(batchId);
+      const blob    = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      saveBlob(blob, `batch-${batchId}-errors.json`);
+      addLog({ level: "success", message: `Error JSON downloaded for Batch #${batchId}` });
+    } catch (err) {
+      addLog({ level: "error", message: `Download failed: ${err.response?.data?.detail || err.message}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={busy}
+      title={`Download error JSON for Batch #${batchId}`}
+      style={{
+        background: busy ? "var(--color-border)" : "rgba(245,158,11,0.1)",
+        border: "1px solid rgba(245,158,11,0.3)",
+        color: busy ? "var(--color-muted)" : "var(--color-warning)",
+        padding: "5px 12px", borderRadius: "5px",
+        ...mono, fontSize: "10px", cursor: busy ? "not-allowed" : "pointer",
+        whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.15s",
+      }}
+    >
+      {busy ? "…" : `⬇ Batch #${batchId}`}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Retry — search blocked records
 // ─────────────────────────────────────────────────────────────────────────────
 function RetrySearchView() {
@@ -796,7 +858,12 @@ function RetrySearchView() {
                   {r.blocking_errors.map((err, j) => (
                     <div key={j} style={{ ...body, fontSize: "11px", color: "var(--color-error)", lineHeight: 1.5 }}>⚠ {err}</div>
                   ))}
+                  {r.cross_check_warnings?.map((w, j) => (
+                    <div key={j} style={{ ...body, fontSize: "11px", color: "var(--color-warning)", lineHeight: 1.5, marginTop: "2px" }}>⚡ {w}</div>
+                  ))}
                 </div>
+                {/* Download error JSON for this batch directly from the search result */}
+                <DownloadErrBtn batchId={r.batch_id} addLog={addLog} />
               </div>
             </Card>
           ))}
@@ -826,9 +893,23 @@ function RetryUploadView() {
     }
     setFile(f);
     setResult(null);
-    // Try to auto-detect batch_id from filename e.g. batch-42-errors.json
-    const m = f.name.match(/batch[-_](\d+)/i);
-    if (m && !batchId) setBatchId(m[1]);
+
+    // Auto-detect batch_id: first try reading the JSON content (most reliable),
+    // then fall back to parsing the filename e.g. batch-42-errors.json
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (parsed.batch_id) {
+          setBatchId(String(parsed.batch_id));
+          return;
+        }
+      } catch {}
+      // Filename fallback
+      const m = f.name.match(/batch[-_](\d+)/i);
+      if (m) setBatchId(m[1]);
+    };
+    reader.readAsText(f);
   };
 
   const handleDrop = (e) => {

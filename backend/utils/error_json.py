@@ -54,7 +54,7 @@ _VALID_FIELDS = {f.name for f in dataclasses.fields(AuditRecord)}
 # ---------------------------------------------------------------------------
 
 def build_error_payload(
-    records: List[AuditRecord],
+    records: List[Any],
     batch_id: int,
 ) -> Dict[str, Any]:
     """
@@ -62,11 +62,18 @@ def build_error_payload(
     Returns the dict (caller decides whether to write to file or return as API response).
     """
 
-    def _serialise(r: AuditRecord) -> Dict[str, Any]:
-        d = dataclasses.asdict(r)
+    def _serialise(r: Any) -> Dict[str, Any]:
+        if dataclasses.is_dataclass(r):
+            d = dataclasses.asdict(r)
+        elif isinstance(r, dict):
+            d = dict(r)
+        else:
+            logging.warning(f"build_error_payload: unexpected record type {type(r)}")
+            return {}
+
         # Surface error lists at the top for visibility
         return {
-            "file_name":            d.pop("file_name", r.file_name),
+            "file_name":            d.pop("file_name", ""),
             "blocking_errors":      d.pop("blocking_errors", []),
             "validation_errors":    d.pop("validation_errors", []),
             "cross_check_warnings": d.pop("cross_check_warnings", []),
