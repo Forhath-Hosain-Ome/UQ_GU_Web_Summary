@@ -114,7 +114,7 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    command: celery -A summary_backend worker -l info -Q puma_summary,celery,image_processor --concurrency=4
+    command: celery -A summary_backend worker -l info -Q puma_summary,celery,image_processor --concurrency=4 --logfile=/app/logs/celery.log
     networks:
       - app_network
     restart: unless-stopped

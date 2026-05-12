@@ -107,9 +107,9 @@ _PO_UNIT_MAP: dict[str, str] = {
 
 FORMAT_FIXED_CELLS: dict[str, dict[str, tuple[int, int]]] = {
     "WOVEN_78": {
-        "ship_qty":   (43, 20),   # R44 C21
-        "audit_qty":  (47, 22),   # R48 C23
-        "defect_qty": (49, 22),   # R50 C23
+        "ship_qty":   (12, 83),   # R44 C21
+        "audit_qty":  (14, 89),   # R48 C23
+        "defect_qty": (14, 96),   # R50 C23
     },
 }
 

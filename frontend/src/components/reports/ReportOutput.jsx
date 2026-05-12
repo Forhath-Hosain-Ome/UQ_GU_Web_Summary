@@ -78,10 +78,10 @@ async function downloadBoth(report, downloadReportPDFFn, downloadCertificateFn, 
 // detail (action = "view"). The action passed from the sidebar is forwarded to
 // the detail page so it can show the right contextual button / auto-trigger there.
 function ReportList({ data, onSelect, action = "view" }) {
-  const results = data?.results || data || [];
+  const results = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
 
   // Heuristic to detect if we are listing Audit batches instead of reports
-  const isBatchList = results.length > 0 && results[0].status !== undefined;
+  const isBatchList = results.length > 0 && (results[0].status !== undefined || results[0].total_files !== undefined);
 
   const sorted  = [...results].sort((a, b) => {
     const dateA = a.report_date || a.inspection_date || a.created_at || "";
@@ -128,9 +128,9 @@ function ReportList({ data, onSelect, action = "view" }) {
               {r.po_numbers?.map((p) => p.number).join(", ")}
             </span>
           )}
-          {isBatchList && r.pair && (
-            <span style={{ fontFamily: "var(--font-body)", fontSize: "10px", color: "var(--color-muted)" }}>
-              {r.pair.buyer?.name} / {r.pair.factory?.name}
+          {isBatchList && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+              Format: {r.format_type || "N/A"}
             </span>
           )}
           <span style={{ color: "var(--color-muted)", fontSize: "12px" }}>→</span>
@@ -141,7 +141,7 @@ function ReportList({ data, onSelect, action = "view" }) {
 }
 
 // ── Report detail ─────────────────────────────────────────────────────────────
-function ReportDetail({ data }) {
+function ReportDetail({ data, downloadReportPDFFn, downloadCertificateFn }) {
   const { addLog } = useOutputStore();
 
   const fields = [
@@ -159,14 +159,23 @@ function ReportDetail({ data }) {
     ["Inspected Qty",   data?.inspected_qty],
     ["Major Defect",    data?.major_defect],
     ["Minor Defect",    data?.minor_defect],
+    ["Batch Status",    data?.status],
+    ["Total Files",     data?.total_files],
+    ["Processed",       data?.processed_files],
+    ["Failed",          data?.failed_files],
+    ["Format Type",     data?.format_type],
   ];
+
+  // Heuristic to check if we are viewing a Batch Detail instead of a Report
+  const isBatch = data?.status !== undefined && data?.total_files !== undefined;
+  const title = isBatch ? `Batch #${data.id}` : (data?.style || `Report #${data.id}`);
 
   return (
     <div className="fade-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: "18px", fontWeight: 700, margin: 0 }}>
-          {data?.style}
+          {title}
         </h2>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
           #{data?.id}
@@ -182,17 +191,19 @@ function ReportDetail({ data }) {
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <button
-          onClick={() => downloadBoth(data, addLog)}
-          style={{
-            background: "rgba(34,211,160,0.1)", border: "1px solid rgba(34,211,160,0.25)",
-            color: "var(--color-success)", padding: "5px 16px", borderRadius: "5px",
-            fontFamily: "var(--font-mono)", fontSize: "11px", cursor: "pointer",
-            display: "flex", alignItems: "center", gap: "6px",
-          }}
-        >
-          ⬇ PDF + Certificate
-        </button>
+        {!isBatch && downloadReportPDFFn && downloadCertificateFn && (
+          <button
+            onClick={() => downloadBoth(data, downloadReportPDFFn, downloadCertificateFn, addLog)}
+            style={{
+              background: "rgba(34,211,160,0.1)", border: "1px solid rgba(34,211,160,0.25)",
+              color: "var(--color-success)", padding: "5px 16px", borderRadius: "5px",
+              fontFamily: "var(--font-mono)", fontSize: "11px", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: "6px",
+            }}
+          >
+            ⬇ PDF + Certificate
+          </button>
+        )}
       </div>
 
       {/* Fields grid */}
@@ -331,6 +342,12 @@ export default function ReportOutput({ output }) {
   };
 
   if (output.type === "report-list") return <ReportList data={output.data} onSelect={handleSelect} action={output.action} />;
-  if (output.type === "report")      return <ReportDetail data={output.data} />;
+  if (output.type === "report")      return (
+    <ReportDetail 
+      data={output.data} 
+      downloadReportPDFFn={downloadReportPDFFn} 
+      downloadCertificateFn={downloadCertificateFn} 
+    />
+  );
   return null;
 }

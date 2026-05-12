@@ -34,6 +34,7 @@ Usage
 import logging
 from dataclasses import dataclass, field, asdict
 from datetime import date
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -291,11 +292,19 @@ class BaseExtractor:
             record.do_orders = do_data.get("do_orders", [])
             record.do_totals = do_data.get("do_totals", {})
             record.do_note   = do_data.get("do_note", "")
-            logger.info(f"  [do_table] -> extracted {len(record.do_orders)} rows")
+            
+            # If DO totals are empty, sum up the orders manually
+            if not record.do_totals.get("ship_qty") and record.do_orders:
+                manual_ship = sum(int(o.get("ship_qty") or 0) for o in record.do_orders)
+                if manual_ship > 0:
+                    record.do_totals["ship_qty"] = manual_ship
+                    logger.info(f"  [do_table] -> manually summed ship_qty: {manual_ship}")
+
             # Fallback: use DO totals for missing ship_qty
             if (not record.ship_qty or not str(record.ship_qty).strip()) and record.do_totals.get("ship_qty"):
                 record.ship_qty = str(record.do_totals["ship_qty"])
                 logger.info(f"  [ship_qty] -> '{record.ship_qty}' (from DO table)")
+
         except Exception as exc:
             logger.error(f"[{path.name}] DO table extraction FAILED: {exc}")
 
@@ -337,6 +346,7 @@ class BaseExtractor:
         from final_summary.extraction.fields.times import extract as extract_times_fn
         from final_summary.extraction.fields.dates import extract as extract_dates_fn
         from final_summary.extraction.fields.quantities import extract as extract_quantities_fn
+        from final_summary.extraction.fields.personnel import extract as extract_personnel_fn
 
         # Collect which single-value fields are still empty
         missing_single = {
@@ -348,19 +358,34 @@ class BaseExtractor:
             record.factory_in_time, record.factory_out_time,
             record.audit_start_time, record.audit_end_time,
         ])
-        need_dates = not any([record.exf, record.po_edt, record.po_wh])
-        need_quantities = not record.ship_qty
+        need_dates = not any([
+            record.exf, record.po_edt, record.po_wh,
+            record.plan_edt, record.plan_wh,
+        ])
+        need_quantities = not any([
+            record.po_qty, record.ship_qty, record.audit_qty,
+            record.defect_qty,
+        ])
+        need_personnel = not any([
+            record.inspector, record.person, record.carton,
+            record.needle_detector, record.remarks,
+            record.audit_result and record.audit_result != "-",
+            record.do_set_col_size,
+        ])
 
-        if not missing_single and not need_times and not need_dates and not need_quantities:
+        if (not missing_single and not need_times and not need_dates
+                and not need_quantities and not need_personnel):
             return
 
         logger.info(f"[{path.name}] Scanning all sheets for missing fields: "
-                   f"single={missing_single} times={need_times} dates={need_dates} qtys={need_quantities}")
+                    f"single={missing_single} times={need_times} dates={need_dates} "
+                    f"qtys={need_quantities} personnel={need_personnel}")
 
         all_dfs = read_all_sheets(path)
 
         for sheet_idx, df in enumerate(all_dfs):
-            if not missing_single and not need_times and not need_dates and not need_quantities:
+            if (not missing_single and not need_times and not need_dates
+                    and not need_quantities and not need_personnel):
                 break
 
             grid = CellGrid(df)
@@ -398,7 +423,10 @@ class BaseExtractor:
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
                         logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
-                need_dates = not any([record.exf, record.po_edt, record.po_wh])
+                need_dates = not any([
+                    record.exf, record.po_edt, record.po_wh,
+                    record.plan_edt, record.plan_wh,
+                ])
 
             # Quantities
             if need_quantities:
@@ -407,7 +435,26 @@ class BaseExtractor:
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
                     logging.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
-                need_quantities = not record.ship_qty
+                need_quantities = not any([
+                    record.po_qty, record.ship_qty, record.audit_qty,
+                    record.defect_qty,
+                ])
+
+            # Personnel
+            if need_personnel:
+                pers = extract_personnel_fn(grid, path)
+                for k, v in pers.items():
+                    if v and not str(getattr(record, k, "")).strip():
+                        setattr(record, k, v)
+                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
+                # audit_result defaults to "-" which is truthy; treat it as
+                # missing only when still the placeholder after extraction
+                need_personnel = not any([
+                    record.inspector, record.person, record.carton,
+                    record.needle_detector, record.remarks,
+                    record.audit_result and record.audit_result != "-",
+                    record.do_set_col_size,
+                ])
     def _read_sheet(self, path: Path, sheet_name: str):
         """Load the sheet DataFrame. Override to apply skiprows etc."""
         return read_sheet(path, sheet_name=sheet_name)
@@ -451,7 +498,56 @@ class BaseExtractor:
         Override in subclasses to apply layout-specific corrections.
         Default implementation returns the record unchanged.
         """
+        # ── Remarks Fallback Parser ───────────────────────────────────────────
+        # Factories often type data into comments instead of filling cells.
+        self._parse_remarks_fallback(record)
         return record
+
+    def _parse_remarks_fallback(self, record: AuditRecord) -> None:
+        """Scrape missing values from record.remarks using regex."""
+        if not record.remarks:
+            return
+
+        text = record.remarks.upper()
+
+        # 1. Times (Handles "IN TIME:-09.00 AM", "OUT TIME-00:00 PM")
+        if not record.factory_in_time:
+            m = re.search(r"FACTORY IN TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
+            if m: record.factory_in_time = m.group(1).replace('.', ':')
+        
+        if not record.factory_out_time:
+            m = re.search(r"OUT TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
+            if m: record.factory_out_time = m.group(1).replace('.', ':')
+
+        if not record.audit_start_time:
+            m = re.search(r"AUDIT START TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
+            if m: record.audit_start_time = m.group(1).replace('.', ':')
+
+        if not record.audit_end_time:
+            # Matches "FINISHED TIME-04:00 PM"
+            m = re.search(r"(?:FINISHED|END) TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
+            if m: record.audit_end_time = m.group(1).replace('.', ':')
+
+        # 2. Quantities (Handles "TOTAL=700 PCS")
+        if not record.audit_qty or record.audit_qty == "0":
+            m = re.search(r"TOTAL\s*=\s*(\d+)\s*PCS", text)
+            if m: record.audit_qty = m.group(1)
+        
+        # 3. Report Number (if sequential numbers are used in headers/comments)
+        if not record.report_no:
+            # Look for ordinal references like "1st TIME RE-FINAL" or sequential audit numbers
+            m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
+            if m: record.report_no = m.group(1)
+            else:
+                # Check filename for sequential ID if still missing
+                m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
+                if m: record.report_no = m.group(1)
+
+        # 4. Person count (Handles "05 PERSON")
+        if not record.person:
+            m = re.search(r"(\d+)\s*PERSON", text)
+            if m: record.person = m.group(1)
+
 
     # ------------------------------------------------------------------
     # Cross-check

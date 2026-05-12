@@ -20,16 +20,21 @@ Each field only uses positions not yet taken.
 """
 
 import logging
+import re
 from typing import Any, Dict, Set, Tuple
 
 from ..core.cell_grid import CellGrid
 from .proximity import (
     find_inline_value,
     resolve_value,
+    normalize_text,
     resolve_po_wh_value,
     resolve_po_or_report_number,
 )
 
+
+# Lenient regex for report numbers to avoid rejecting valid but non-standard IDs
+LENIENT_REPORT_NO_RE = re.compile(r"[A-Z0-9]{2,}[-\s/]?\d+", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -120,6 +125,13 @@ def extract_fields(
 
         for label_row, label_col, label_text in available_positions:
 
+            # ── Label Collision Mitigation ────────────────────────────────────
+            # Prevent 'audit_qty' from stealing labels meant for 'ship_qty'
+            # (e.g., "Audit For Shipping Qty" starts with "Audit Qty")
+            norm_found = normalize_text(label_text)
+            if field_name == "audit_qty" and "shipping" in norm_found:
+                continue
+
             # Special-case fields that bypass inline extraction entirely
             if field_name == "needle_detector":
                 # Use only the configured direction; do NOT check inline
@@ -137,8 +149,10 @@ def extract_fields(
                         # Verify the inline value actually matches a valid pattern
                         # so we don't 'steal' a label for the wrong field.
                         from .proximity import is_valid_po_no, is_valid_report_no
-                        if (field_name == "po_no" and is_valid_po_no(candidate)) or \
-                           (field_name == "report_no" and is_valid_report_no(candidate)):
+                        is_report = field_name == "report_no" and (is_valid_report_no(candidate) or LENIENT_REPORT_NO_RE.search(candidate))
+                        is_po     = field_name == "po_no" and is_valid_po_no(candidate)
+                        
+                        if is_report or is_po:
                             value = candidate
                             break
                 if not value:
