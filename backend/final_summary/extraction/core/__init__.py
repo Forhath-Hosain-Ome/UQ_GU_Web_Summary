@@ -57,6 +57,8 @@ from .label_map import (
     DO_FILL_DOWN_FIELDS,
 )
 
+from .defect_master import get_template_key, get_items, get_categories
+
 __all__ = [
     # Grid & sheets
     "CellGrid", "normalize_text",

@@ -269,7 +269,7 @@ class AuditExportView(APIView):
         output_path = output_dir / filename
 
         try:
-            from final_summary.utils.summary_writer import write_summary, DefectMismatchError
+            from utils.summary_writer import write_summary, DefectMismatchError
             write_summary(
                 records=records,
                 defect_items_by_report=defect_map,

@@ -595,14 +595,14 @@ class BaseExtractor:
             if m:
                 record.audit_qty = m.group(1)
 
-        # if not record.report_no:
-        #     m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
-        #     if m:
-        #         record.report_no = m.group(1)
-        #     else:
-        #         m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
-        #         if m:
-        #             record.report_no = m.group(1)
+        if not record.report_no:
+            m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
+            if m:
+                record.report_no = m.group(1)
+            else:
+                m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
+                if m:
+                    record.report_no = m.group(1)
 
         if not record.person:
             m = re.search(r"(\d+)\s*PERSON", text)

@@ -96,6 +96,10 @@ export const fetchBatches = (params) =>
 export const fetchBatch = (pk) =>
   final_summary_api.get(`batches/${pk}/`).then((r) => r.data);
 
+/** GET /batches/<pk>/ - alias for fetchBatch */
+export const fetchBatchDetail = (pk) =>
+  final_summary_api.get(`batches/${pk}/`).then((r) => r.data);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Retry
 // ─────────────────────────────────────────────────────────────────────────────
