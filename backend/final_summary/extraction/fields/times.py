@@ -19,7 +19,7 @@ To change time format      → edit to_hhmm() in extraction/core/normalise.py.
 
 from pathlib import Path
 from typing import Optional
-
+import logging
 from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
@@ -27,6 +27,7 @@ from final_summary.extraction.core import (
     duration_hhmm,
     resolve_value,
 )
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Per-field synonym lists

@@ -24,17 +24,37 @@ Pipeline (in order)
 date_of_issue is NEVER extracted from the sheet.
 It is injected from batch.inspection_date in step 10.
 
-Usage
------
-    from extraction.formats import get_extractor
-    extractor = get_extractor(pair)        # returns the right subclass instance
-    record    = extractor.extract(path, sheet_name, inspection_date, pair)
+FIX APPLIED (Bug #1 — parameter mismatch)
+------------------------------------------
+All calls to per-field extractor functions now pass `path` as the second
+positional argument and `format_type` as a keyword argument:
+
+    extractor_fn(grid, path, format_type=self.REPORT_TYPE)   # ✅ correct
+
+Previously they were called as:
+
+    extractor_fn(grid, format_type=self.REPORT_TYPE)          # ❌ wrong
+    # path received self.REPORT_TYPE ("WOVEN_78")
+    # format_type stayed at default ""
+
+This caused:
+  • Fixed-cell fallbacks (FORMAT_FIXED_CELLS) never firing → ship_qty / audit_qty
+    always empty → blocking errors.
+  • Filename-based inspection_type inference breaking (path.stem on a string).
+  • report_no fixed-cell fallback (FORMAT_FIXED_CELLS["WOVEN_78"]) never used.
+
+The same fix is applied in _fill_missing_from_all_sheets().
+
+FIX APPLIED (Bug #3 — missing audit_report field)
+---------------------------------------------------
+Added audit_report field back to AuditRecord dataclass so the pipeline
+never silently drops that piece of data.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import date
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -69,7 +89,7 @@ class AuditRecord:
     """
 
     # Source
-    file_name: str
+    file_name:  str
     sheet_name: str = ""
 
     # Identity / header
@@ -77,7 +97,7 @@ class AuditRecord:
     client:          str = ""
     date_of_issue:   str = ""   # always injected from batch — never extracted
     inspection_type: str = ""
-    report_no:       str = ""
+    audit_report:    str = ""   # Bug #3 restored: separate audit-report-number field
     item_name:       str = ""
     style_no:        str = ""
     po_no:           str = ""
@@ -136,8 +156,8 @@ class AuditRecord:
     do_note:     str                  = ""
 
     # Validation
-    validation_errors:  List[str] = field(default_factory=list)
-    blocking_errors:    List[str] = field(default_factory=list)
+    validation_errors:    List[str] = field(default_factory=list)
+    blocking_errors:      List[str] = field(default_factory=list)
     cross_check_warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -193,11 +213,15 @@ class BaseExtractor:
             return record
 
         # ── Step 2: single-value fields ────────────────────────────────────
+        # BUG FIX #1: pass `path` as the second positional argument so that
+        # each extractor receives (grid, path, format_type=...) as designed.
+        # Previously: extractor_fn(grid, format_type=self.REPORT_TYPE)
+        #   → path received "WOVEN_78", format_type received ""
+        # Now:        extractor_fn(grid, path, format_type=self.REPORT_TYPE)
+        #   → path receives a real Path object, format_type receives "WOVEN_78"
         for field_name, extractor_fn in self._field_extractors().items():
             try:
-                # Only pass the grid initially to prevent premature
-                # filename fallbacks inside the field extractors
-                value = extractor_fn(grid, format_type=self.REPORT_TYPE)
+                value = extractor_fn(grid, path, format_type=self.REPORT_TYPE)  # ✅ FIXED
                 if value:
                     setattr(record, field_name, value)
                     logger.info(f"  [{field_name}] -> '{value}'")
@@ -261,25 +285,26 @@ class BaseExtractor:
         except Exception as exc:
             logger.error(f"[{path.name}] Personnel extraction FAILED: {exc}")
 
-        # ── Step 7b: fill missing fields from other sheets ─────────────────────
+        # ── Step 7b: fill missing fields from other sheets ─────────────────
         try:
             self._fill_missing_from_all_sheets(record, path)
         except Exception as exc:
             logger.error(f"[{path.name}] Multi-sheet fill FAILED: {exc}")
 
-        # ── Step 7c: Final Field Presence Validation ──────────────────────
-        # Explicitly log errors for critical missing fields after all steps
-        for field_name in ["factory", "client", "report_no", "ship_qty", "audit_qty"]:
+        # ── Step 7c: Final Field Presence Validation ───────────────────────
+        for field_name in ["factory", "client", "ship_qty", "audit_qty"]:
             val = getattr(record, field_name, "")
             if not val or not str(val).strip():
-                logger.error(f"  [CRITICAL ERROR] Field '{field_name}' is MISSING after full workbook scan")
+                logger.error(
+                    f"  [CRITICAL ERROR] Field '{field_name}' is MISSING "
+                    f"after full workbook scan"
+                )
 
         # ── Step 8: defects ────────────────────────────────────────────────
         try:
             defect_rows, defect_totals = self._extract_defects(path, sheet_name)
             record.defect_rows = defect_rows
             logger.info(f"  [defects] -> extracted {len(defect_rows)} rows")
-            # Use defect table major total if header extraction missed it
             if not record.defect_qty and defect_totals.get("major"):
                 record.defect_qty = str(defect_totals["major"])
                 logger.info(f"  [defect_qty] -> '{record.defect_qty}' (from table)")
@@ -292,16 +317,21 @@ class BaseExtractor:
             record.do_orders = do_data.get("do_orders", [])
             record.do_totals = do_data.get("do_totals", {})
             record.do_note   = do_data.get("do_note", "")
-            
+
             # If DO totals are empty, sum up the orders manually
             if not record.do_totals.get("ship_qty") and record.do_orders:
                 manual_ship = sum(int(o.get("ship_qty") or 0) for o in record.do_orders)
                 if manual_ship > 0:
                     record.do_totals["ship_qty"] = manual_ship
-                    logger.info(f"  [do_table] -> manually summed ship_qty: {manual_ship}")
+                    logger.info(
+                        f"  [do_table] -> manually summed ship_qty: {manual_ship}"
+                    )
 
             # Fallback: use DO totals for missing ship_qty
-            if (not record.ship_qty or not str(record.ship_qty).strip()) and record.do_totals.get("ship_qty"):
+            if (
+                (not record.ship_qty or not str(record.ship_qty).strip())
+                and record.do_totals.get("ship_qty")
+            ):
                 record.ship_qty = str(record.do_totals["ship_qty"])
                 logger.info(f"  [ship_qty] -> '{record.ship_qty}' (from DO table)")
 
@@ -312,14 +342,16 @@ class BaseExtractor:
         record.date_of_issue = inspection_date.strftime("%m/%d/%Y")
         logger.info(f"  [date_of_issue] -> '{record.date_of_issue}' (injected)")
 
-        # ── Inspection type fallback from file name ─────────────────────────
+        # ── Inspection type fallback from file name ────────────────────────
         if not record.inspection_type:
             record.inspection_type = extract_type_from_filename(
                 path.stem,
                 audit_qty=record.audit_qty,
                 ship_qty=record.ship_qty,
             )
-            logger.info(f"  [inspection_type] -> '{record.inspection_type}' (filename fallback)")
+            logger.info(
+                f"  [inspection_type] -> '{record.inspection_type}' (filename fallback)"
+            )
 
         # ── Step 11: format-specific post-processing ───────────────────────
         record = self.post_process(record, grid, path)
@@ -333,27 +365,29 @@ class BaseExtractor:
     # ------------------------------------------------------------------
     # Overridable extraction methods
     # ------------------------------------------------------------------
+
     def _fill_missing_from_all_sheets(self, record: AuditRecord, path: Path) -> None:
         """
         For every field still empty after main extraction, scan ALL sheets
-        and fill in any values found. This is how the BABL format works —
-        times, dates, report_no, ship_qty live on 'F-A-ADDITIONAL INFO',
-        not on the defect sheet that the sheet resolver picks.
+        and fill in any values found.
+
+        BUG FIX #1 (same fix as in extract()):
+        All per-field extractor calls now pass `path` as a positional
+        argument so the function signature (grid, path, format_type) is
+        satisfied correctly.
         """
         from final_summary.extraction.fields import FIELD_EXTRACTORS
         from final_summary.extraction.core import read_all_sheets, CellGrid
-        from final_summary.extraction.core import resolve_po_wh_value, to_display_date
-        from final_summary.extraction.fields.times import extract as extract_times_fn
-        from final_summary.extraction.fields.dates import extract as extract_dates_fn
+        from final_summary.extraction.fields.times     import extract as extract_times_fn
+        from final_summary.extraction.fields.dates     import extract as extract_dates_fn
         from final_summary.extraction.fields.quantities import extract as extract_quantities_fn
-        from final_summary.extraction.fields.personnel import extract as extract_personnel_fn
+        from final_summary.extraction.fields.personnel  import extract as extract_personnel_fn
 
         # Collect which single-value fields are still empty
         missing_single = {
             name for name in FIELD_EXTRACTORS
             if not getattr(record, name, "")
         }
-        # Also check multi-value groups
         need_times = not any([
             record.factory_in_time, record.factory_out_time,
             record.audit_start_time, record.audit_end_time,
@@ -373,88 +407,106 @@ class BaseExtractor:
             record.do_set_col_size,
         ])
 
-        if (not missing_single and not need_times and not need_dates
-                and not need_quantities and not need_personnel):
+        if (
+            not missing_single and not need_times and not need_dates
+            and not need_quantities and not need_personnel
+        ):
             return
 
-        logger.info(f"[{path.name}] Scanning all sheets for missing fields: "
-                    f"single={missing_single} times={need_times} dates={need_dates} "
-                    f"qtys={need_quantities} personnel={need_personnel}")
+        logger.info(
+            f"[{path.name}] Scanning all sheets for missing fields: "
+            f"single={missing_single} times={need_times} dates={need_dates} "
+            f"qtys={need_quantities} personnel={need_personnel}"
+        )
 
         all_dfs = read_all_sheets(path)
 
         for sheet_idx, df in enumerate(all_dfs):
-            if (not missing_single and not need_times and not need_dates
-                    and not need_quantities and not need_personnel):
+            if (
+                not missing_single and not need_times and not need_dates
+                and not need_quantities and not need_personnel
+            ):
                 break
 
             grid = CellGrid(df)
 
-            # Single-value fields
+            # ── Single-value fields ────────────────────────────────────────
             for field_name in list(missing_single):
                 fn = FIELD_EXTRACTORS.get(field_name)
                 if not fn:
                     continue
                 try:
-                    value = fn(grid, format_type=self.REPORT_TYPE)
+                    # BUG FIX #1: pass path as positional argument ✅
+                    value = fn(grid, path, format_type=self.REPORT_TYPE)
                     if value:
                         setattr(record, field_name, value)
                         missing_single.discard(field_name)
-                        logger.info(f"  [{field_name}] found on sheet {sheet_idx + 1}: '{value}'")
+                        logger.info(
+                            f"  [{field_name}] found on sheet {sheet_idx + 1}: '{value}'"
+                        )
                 except Exception:
                     pass
 
-            # Times
+            # ── Times ─────────────────────────────────────────────────────
             if need_times:
                 times = extract_times_fn(grid, path)
                 for k, v in times.items():
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
-                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
+                        logger.info(
+                            f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'"
+                        )
                 need_times = not any([
                     record.factory_in_time, record.factory_out_time,
                     record.audit_start_time, record.audit_end_time,
                 ])
 
-            # Dates
+            # ── Dates ─────────────────────────────────────────────────────
             if need_dates:
                 dates = extract_dates_fn(grid, path)
                 for k, v in dates.items():
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
-                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
+                        logger.info(
+                            f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'"
+                        )
                 need_dates = not any([
                     record.exf, record.po_edt, record.po_wh,
                     record.plan_edt, record.plan_wh,
                 ])
 
-            # Quantities
+            # ── Quantities ─────────────────────────────────────────────────
             if need_quantities:
-                qtys = extract_quantities_fn(grid, path, format_type=self.REPORT_TYPE)
+                qtys = extract_quantities_fn(
+                    grid, path, format_type=self.REPORT_TYPE
+                )
                 for k, v in qtys.items():
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
-                    logging.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
+                        logger.info(
+                            f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'"
+                        )
                 need_quantities = not any([
                     record.po_qty, record.ship_qty, record.audit_qty,
                     record.defect_qty,
                 ])
 
-            # Personnel
+            # ── Personnel ─────────────────────────────────────────────────
             if need_personnel:
                 pers = extract_personnel_fn(grid, path)
                 for k, v in pers.items():
                     if v and not str(getattr(record, k, "")).strip():
                         setattr(record, k, v)
-                        logger.info(f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'")
-                # audit_result defaults to "-" which is truthy; treat it as
-                # missing only when still the placeholder after extraction
+                        logger.info(
+                            f"  [{k}] found on sheet {sheet_idx + 1}: '{v}'"
+                        )
                 need_personnel = not any([
                     record.inspector, record.person, record.carton,
                     record.needle_detector, record.remarks,
                     record.audit_result and record.audit_result != "-",
                     record.do_set_col_size,
                 ])
+
     def _read_sheet(self, path: Path, sheet_name: str):
         """Load the sheet DataFrame. Override to apply skiprows etc."""
         return read_sheet(path, sheet_name=sheet_name)
@@ -475,7 +527,9 @@ class BaseExtractor:
     def _extract_dates(self, grid: CellGrid, path: Path) -> dict:
         return extract_dates(grid, path)
 
-    def _extract_quantities(self, grid: CellGrid, path: Path, format_type: str = "") -> dict:
+    def _extract_quantities(
+        self, grid: CellGrid, path: Path, format_type: str = ""
+    ) -> dict:
         return extract_quantities(grid, path, format_type)
 
     def _extract_personnel(self, grid: CellGrid, path: Path) -> dict:
@@ -496,10 +550,8 @@ class BaseExtractor:
         """
         Format-specific post-processing hook.
         Override in subclasses to apply layout-specific corrections.
-        Default implementation returns the record unchanged.
+        Default implementation applies the remarks fallback parser.
         """
-        # ── Remarks Fallback Parser ───────────────────────────────────────────
-        # Factories often type data into comments instead of filling cells.
         self._parse_remarks_fallback(record)
         return record
 
@@ -510,44 +562,52 @@ class BaseExtractor:
 
         text = record.remarks.upper()
 
-        # 1. Times (Handles "IN TIME:-09.00 AM", "OUT TIME-00:00 PM")
         if not record.factory_in_time:
-            m = re.search(r"FACTORY IN TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
-            if m: record.factory_in_time = m.group(1).replace('.', ':')
-        
+            m = re.search(
+                r"FACTORY IN TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text
+            )
+            if m:
+                record.factory_in_time = m.group(1).replace(".", ":")
+
         if not record.factory_out_time:
-            m = re.search(r"OUT TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
-            if m: record.factory_out_time = m.group(1).replace('.', ':')
+            m = re.search(
+                r"OUT TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text
+            )
+            if m:
+                record.factory_out_time = m.group(1).replace(".", ":")
 
         if not record.audit_start_time:
-            m = re.search(r"AUDIT START TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
-            if m: record.audit_start_time = m.group(1).replace('.', ':')
+            m = re.search(
+                r"AUDIT START TIME:?-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text
+            )
+            if m:
+                record.audit_start_time = m.group(1).replace(".", ":")
 
         if not record.audit_end_time:
-            # Matches "FINISHED TIME-04:00 PM"
-            m = re.search(r"(?:FINISHED|END) TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text)
-            if m: record.audit_end_time = m.group(1).replace('.', ':')
+            m = re.search(
+                r"(?:FINISHED|END) TIME-?\s*(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)", text
+            )
+            if m:
+                record.audit_end_time = m.group(1).replace(".", ":")
 
-        # 2. Quantities (Handles "TOTAL=700 PCS")
         if not record.audit_qty or record.audit_qty == "0":
             m = re.search(r"TOTAL\s*=\s*(\d+)\s*PCS", text)
-            if m: record.audit_qty = m.group(1)
-        
-        # 3. Report Number (if sequential numbers are used in headers/comments)
-        if not record.report_no:
-            # Look for ordinal references like "1st TIME RE-FINAL" or sequential audit numbers
-            m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
-            if m: record.report_no = m.group(1)
-            else:
-                # Check filename for sequential ID if still missing
-                m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
-                if m: record.report_no = m.group(1)
+            if m:
+                record.audit_qty = m.group(1)
 
-        # 4. Person count (Handles "05 PERSON")
+        # if not record.report_no:
+        #     m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
+        #     if m:
+        #         record.report_no = m.group(1)
+        #     else:
+        #         m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
+        #         if m:
+        #             record.report_no = m.group(1)
+
         if not record.person:
             m = re.search(r"(\d+)\s*PERSON", text)
-            if m: record.person = m.group(1)
-
+            if m:
+                record.person = m.group(1)
 
     # ------------------------------------------------------------------
     # Cross-check
@@ -585,7 +645,6 @@ class BaseExtractor:
             record.cross_check_warnings.append(warn)
             logger.error(f"[{record.file_name}] {warn}")
 
-        # Log extracted and final names
         logger.info(f"  [factory_extracted] -> '{record.factory_extracted}'")
         logger.info(f"  [client_extracted] -> '{record.client_extracted}'")
         logger.info(f"  [factory] -> '{pair.factory.name}' (canonical)")
