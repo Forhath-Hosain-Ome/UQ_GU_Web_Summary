@@ -82,14 +82,21 @@ def read_all_sheets(path: Path) -> List[pd.DataFrame]:
 def get_sheet_names(path: Path) -> List[str]:
     """
     Return all sheet names in the workbook without loading any data.
-    Useful for checking which sheets exist before deciding what to extract.
+    Supports both .xlsx and .xls files.
     """
     try:
-        import openpyxl
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        names = wb.sheetnames
-        wb.close()
-        return names
+        if path.suffix.lower() == ".xls":
+            import xlrd
+            wb = xlrd.open_workbook(str(path))
+            names = wb.sheet_names()
+            wb.release_resources()
+            return names
+        else:
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            names = wb.sheetnames
+            wb.close()
+            return names
     except Exception as exc:
         logging.warning(f"Could not read sheet names from '{path.name}': {exc}")
         return []

@@ -20,7 +20,7 @@ Key design decisions
 - format_type is derived from batch.pair.report_type, never user-selected.
 - factory / client are set from pair registration after cross-check.
 """
-
+import openpyxl
 import json
 import logging
 import shutil
@@ -30,6 +30,7 @@ from celery import shared_task
 from django.utils.dateparse import parse_date
 from final_summary.models import UploadBatch, AuditReport, DefectEntry
 
+from final_summary.extraction.core import get_sheet_names
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +104,37 @@ def _to_date(value):
             continue
     return None
 
+# ── Excel Convert ─────────────────────────────────────────────────────────────
 
+def _convert_xls_to_xlsx(xls_path: Path) -> Path:
+    """
+    Convert .xls to .xlsx in the same temp folder.
+    Returns the path to the converted .xlsx file.
+    """
+    import xlrd
+    from xlrd import xldate_as_datetime
+
+    xlsx_path = xls_path.with_suffix(".xlsx")
+    xls_wb    = xlrd.open_workbook(str(xls_path), formatting_info=False)
+    xlsx_wb   = openpyxl.Workbook()
+    xlsx_wb.remove(xlsx_wb.active)  # remove default blank sheet
+
+    for sheet_idx in range(xls_wb.nsheets):
+        xls_ws  = xls_wb.sheet_by_index(sheet_idx)
+        xlsx_ws = xlsx_wb.create_sheet(title=xls_ws.name)
+        for row_idx in range(xls_ws.nrows):
+            for col_idx in range(xls_ws.ncols):
+                cell = xls_ws.cell(row_idx, col_idx)
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    value = xldate_as_datetime(cell.value, xls_wb.datemode)
+                else:
+                    value = cell.value
+                xlsx_ws.cell(row=row_idx + 1, column=col_idx + 1).value = value
+
+    xlsx_wb.save(str(xlsx_path))
+    xls_wb.release_resources()
+    logger.info("Converted %s → %s", xls_path.name, xlsx_path.name)
+    return xlsx_path
 # ── DB save ───────────────────────────────────────────────────────────────────
 
 def _save_record(batch: UploadBatch, record) -> bool:
@@ -169,43 +200,55 @@ def _save_record(batch: UploadBatch, record) -> bool:
             do_orders_json        = json.dumps(record.do_orders or []),
         )
 
-        # Bulk-create defect entries
+        # ── Bulk-create defect entries ─────────────────────────────────────
+        # defect_rows come pre-enriched from defects.py with:
+        #   item_no, category_code, category (label), item (canonical name)
+        # We combine code + label into the single `category` field the
+        # flat DefectEntry model expects: e.g. "A - Fabrics", "B - Sewing"
         defect_objects = []
         for d in (record.defect_rows or []):
             if not isinstance(d, dict):
                 continue
-            category_code  = (d.get("category_code") or "").strip()
-            category_label = (d.get("category") or "").strip()
-            defect_name    = (d.get("item") or "").strip()
-            major          = int(d.get("major", 0) or 0)
-            minor          = int(d.get("minor", 0) or 0)
-            comment        = (d.get("comment") or "").strip()
 
-            if not category_code and not defect_name:
+            major   = int(d.get("major",   0) or 0)
+            minor   = int(d.get("minor",   0) or 0)
+            comment = str(d.get("comment") or "").strip()
+
+            # Skip completely empty rows
+            if not major and not minor and not comment:
                 continue
-            if major == 0 and minor == 0 and not comment:
-                continue
+
+            code  = str(d.get("category_code") or "").strip()
+            label = str(d.get("category")      or "").strip()
+
+            # Build combined category: "A - Fabrics", fall back gracefully
+            if code and label:
+                category = f"{code} - {label}"
+            elif code:
+                category = code
+            else:
+                category = label
 
             defect_objects.append(DefectEntry(
-                report         = report,
-                category_code  = category_code,
-                category_label = category_label,
-                defect_name    = defect_name,
-                major          = major,
-                minor          = minor,
-                comment        = comment,
+                report      = report,
+                serial      = int(d.get("item_no", 0) or 0),
+                category    = category,
+                defect_name = str(d.get("item") or "").strip(),
+                major       = major,
+                minor       = minor,
+                comment     = comment,
             ))
 
         if defect_objects:
-            logger.debug(
-                f"Attempting to bulk_create {len(defect_objects)} defect entries "
-                f"for report {report.pk} (file: {record.file_name})"
-            )
             DefectEntry.objects.bulk_create(defect_objects)
+            logger.debug(
+                "Saved %d defect entries for report #%s (%s)",
+                len(defect_objects), report.pk, record.file_name,
+            )
         else:
             logger.debug(
-                f"No defect entries to bulk_create for report {report.pk} "
-                f"after filtering (file: {record.file_name})."
+                "No defect entries to save for report #%s (%s)",
+                report.pk, record.file_name,
             )
 
         logger.info("Saved: %s → AuditReport #%s", record.file_name, report.pk)
@@ -288,27 +331,31 @@ def process_audit_upload(
 
         # ── Resolve target sheets per inspection type from the pair ──────
         target_reports = batch.pair.available_reports or ["FINAL", "RE_FINAL", "INLINE"]
-        # Fallback if available_reports is empty
         if not target_reports:
             target_reports = ["FINAL", "RE_FINAL", "INLINE"]
-
-        extracted        = []   # <-- already declared above, keep the list
-        extract_failures = []   # <-- already declared above, keep the list
-
-        import openpyxl
 
         for excel_path in excel_files:
             logger.debug("Processing file: %s", excel_path.name)
             logger.debug("  Full path: %s", excel_path)
-            # Get actual sheet names from the workbook
-            wb = openpyxl.load_workbook(excel_path, read_only=True, data_only=True)
-            available_sheets = wb.sheetnames
-            wb.close()
 
-            # Find sheets that match the target inspection types (case‑insensitive)
+            # Convert .xls → .xlsx so the extractor always receives .xlsx
+            actual_path = excel_path
+            if excel_path.suffix.lower() == ".xls":
+                try:
+                    actual_path = _convert_xls_to_xlsx(excel_path)
+                except Exception as exc:
+                    msg = f"{excel_path.name}: failed to convert .xls to .xlsx: {exc}"
+                    logger.exception("XLS conversion failed – %s", msg)
+                    extract_failures.append(msg)
+                    continue
+
+            available_sheets = get_sheet_names(actual_path)  # your existing function
+            if not available_sheets:
+                extract_failures.append(f"{excel_path.name}: no sheets found")
+                continue
+
             sheets_to_process = []
             for report_type in target_reports:
-                # Many reports have sheet names like "Final", "Re-Final", "INLINE"
                 match = next(
                     (s for s in available_sheets if s.lower() == report_type.lower()),
                     None,
@@ -316,30 +363,27 @@ def process_audit_upload(
                 if match:
                     sheets_to_process.append(match)
 
-            # If no matching sheet found, fall back to the first sheet
             if not sheets_to_process:
                 logger.warning("  No matching sheets found for %s", excel_path.name)
                 logger.warning("    Available sheets: %s", available_sheets)
                 sheets_to_process = [available_sheets[0]]
 
+            # ... rest of your existing sheet matching logic unchanged ...
             for sheet_name in sheets_to_process:
                 try:
-                    logger.info("  -> Extracting %s sheet: '%s'", excel_path.name, sheet_name)
                     record = extractor.extract(
-                        path=excel_path,
+                        path=actual_path,          # always .xlsx at this point
                         sheet_name=sheet_name,
                         inspection_date=inspection_date,
                         pair=pair,
                     )
-                    # Make file_name unique per sheet so duplicates aren't skipped
-                    record.file_name = f"{excel_path.name} ({sheet_name})"
+                    record.file_name = f"{excel_path.name} ({sheet_name})"  # original name
                     extracted.append(record)
                 except Exception as exc:
                     msg = f"{excel_path.name} ({sheet_name}): {exc}"
                     logger.exception("Extraction failed – %s", msg)
                     extract_failures.append(msg)
 
-        # Update total after extraction — we now know exactly how many records
         batch.total_files = len(extracted)
         batch.save(update_fields=["total_files"])
         _push_progress(batch, stage="VALIDATING")
@@ -362,12 +406,9 @@ def process_audit_upload(
             batch.save(update_fields=["processed_files", "failed_files"])
             _push_progress(batch, stage="SAVING")
 
-        # Save blocked records to DB so they can be downloaded / retried later.
-        # They carry their blocking_errors but are not counted as "processed".
         for record in blocked:
             _save_record(batch, record)
 
-        # Blocked + extract failures count as failed
         batch.failed_files += len(blocked) + len(extract_failures)
         batch.save(update_fields=["failed_files"])
 

@@ -28,6 +28,7 @@ from final_summary.extraction.core import (
 SYNONYMS: list[str] = [
     "style no",
     "style number",
+    "item code",
     "style",
     "local sample code",
     "style no.",

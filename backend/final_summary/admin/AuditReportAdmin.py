@@ -13,7 +13,7 @@ from final_summary.models import (
 class DefectEntryInline(admin.TabularInline):
     model   = DefectEntry
     extra   = 0
-    fields  = ("category", "item", "major", "minor", "comment")
+    fields  = ("serial", "category", "defect_name", "major", "minor", "comment")
     readonly_fields = fields
     can_delete = False
     max_num    = 0

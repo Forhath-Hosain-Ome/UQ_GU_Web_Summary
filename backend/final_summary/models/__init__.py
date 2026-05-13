@@ -4,3 +4,4 @@ from .buyer import Buyer
 from .defect_entry import DefectEntry
 from .factory import Factory
 from .upload_batch import UploadBatch
+from .defect_entry import DefectEntry

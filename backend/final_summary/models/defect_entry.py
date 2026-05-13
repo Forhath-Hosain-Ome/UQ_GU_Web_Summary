@@ -1,6 +1,11 @@
 """
 -----------------------
 One row per defect line item in an audit report.
+
+category is stored as a single combined field: "<code> - <label>"
+e.g. "A - Fabrics", "B - Sewing", "A - SPEC"
+
+No separate category_code / category_label columns — keep it flat.
 """
 
 from django.db import models
@@ -17,19 +22,24 @@ class DefectEntry(BaseModel):
         related_name="defect_entries",
     )
 
-    # ── Canonical fields from defect_master ──────────────────────────────────
-    category_code  = models.CharField(
-        max_length=10,
-        blank=True,
-        db_index=True,
-        help_text="Single-letter category code from defect_master (e.g. 'A', 'B').",
+    # ── Position / ordering ───────────────────────────────────────────────────
+    serial = models.PositiveIntegerField(
+        default=0,
+        help_text="item_no from defect_master — stable position in the template.",
     )
-    category_label = models.CharField(
+
+    # ── Category (combined code + label) ─────────────────────────────────────
+    category = models.CharField(
         max_length=255,
         blank=True,
         db_index=True,
-        help_text="Human-readable category label (e.g. 'Fabrics', 'Sewing').",
+        help_text=(
+            "Combined category string: '<code> - <label>'. "
+            "E.g. 'A - Fabrics', 'B - Sewing Defects', 'A - SPEC'."
+        ),
     )
+
+    # ── Defect name ───────────────────────────────────────────────────────────
     defect_name = models.CharField(
         max_length=512,
         blank=True,
@@ -42,12 +52,12 @@ class DefectEntry(BaseModel):
     comment = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["category_code", "defect_name"]
+        ordering = ["serial"]
         verbose_name = "Defect Entry"
         verbose_name_plural = "Defect Entries"
 
     def __str__(self) -> str:
         return (
-            f"{self.category_code} / {self.defect_name} "
+            f"[{self.serial}] {self.category} / {self.defect_name} "
             f"— {self.major}M/{self.minor}m"
         )
