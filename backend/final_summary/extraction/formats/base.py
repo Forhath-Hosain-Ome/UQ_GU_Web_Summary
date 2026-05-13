@@ -179,6 +179,10 @@ class BaseExtractor:
     """
 
     REPORT_TYPE: str = "BASE"
+    
+    # Subclasses can override this (e.g. 31, 37, 78) 
+    # Otherwise it is retrieved from the BuyerFactoryPair
+    DEFECT_COUNT: Optional[int] = None
 
     def extract(
         self,
@@ -302,7 +306,7 @@ class BaseExtractor:
 
         # ── Step 8: defects ────────────────────────────────────────────────
         try:
-            defect_rows, defect_totals = self._extract_defects(path, sheet_name)
+            defect_rows, defect_totals, meta = self._extract_defects(path, sheet_name, pair=pair)
             record.defect_rows = defect_rows
             logger.info(f"  [defects] -> extracted {len(defect_rows)} rows")
             if not record.defect_qty and defect_totals.get("major"):
@@ -535,8 +539,24 @@ class BaseExtractor:
     def _extract_personnel(self, grid: CellGrid, path: Path) -> dict:
         return extract_personnel(grid, path)
 
-    def _extract_defects(self, path: Path, sheet_name: str):
-        return extract_defects(path=path, sheet_name=sheet_name)
+    def _extract_defects(self, path: Path, sheet_name: str, pair: Any = None):
+        """
+        Extract defect rows using the defects field extractor.
+        
+        Note: This implementation is now a shell. Subclasses (Knit35, Woven78, etc.) 
+        should override this to pass their specific defect_column_count 
+        to ensure accurate positional ID/Serial mapping.
+        """
+        count = self.DEFECT_COUNT
+        if count is None and pair:
+            count = getattr(pair, "defect_column_count", 37)
+            
+        return extract_defects(
+            path=path, 
+            sheet_name=sheet_name, 
+            defect_column_count=count, 
+            pair=pair
+        )
 
     def _extract_do_table(self, path: Path, sheet_name: str) -> dict:
         return extract_do_table(path=path, sheet_name=sheet_name)

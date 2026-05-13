@@ -2,6 +2,8 @@
 List view for Top5Job objects.
 """
 import logging
+import os
+from django.http import FileResponse
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -21,11 +23,17 @@ class Top5JobListView(generics.ListAPIView):
     serializer_class = Top5BatchListSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        qs = Top5Job.objects.all().select_related("created_by")
-        if not user.is_staff:
-            qs = qs.filter(created_by=user)
-        return qs.order_by("-created_at")
+        try:
+            user = self.request.user
+            qs = Top5Job.objects.all().select_related("created_by")
+            if not user.is_staff:
+                qs = qs.filter(created_by=user)
+            return qs.order_by("-created_at")
+        except RuntimeError as e:
+            if "cannot schedule new futures after interpreter shutdown" in str(e):
+                return Top5Job.objects.none()
+            else:
+                raise
 
     def list(self, request, *args, **kwargs):
         try:

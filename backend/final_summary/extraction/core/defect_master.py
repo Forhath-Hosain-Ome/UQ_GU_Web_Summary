@@ -274,7 +274,7 @@ TEMPLATE_FOR_COUNT: dict[int, str] = {
     78: "TEMPLATE_78",
 }
 
-_TOLERANCE = 1
+_TOLERANCE = 4
 
 
 def get_template_key(defect_column_count: int) -> str | None:

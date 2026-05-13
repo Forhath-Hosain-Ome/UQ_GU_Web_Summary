@@ -21,12 +21,12 @@ from final_summary.extraction.core import (
 # ---------------------------------------------------------------------------
 
 SYNONYMS: list[str] = [
+    "product description",
+    "product name",
+    "item name:",
     "item name",
     "item",
     "description",
-    "item name:",
-    "product name",
-    "product description",
 ]
 
 DIRECTION = DirectionRule.DOWN

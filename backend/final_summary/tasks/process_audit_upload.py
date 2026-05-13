@@ -174,26 +174,39 @@ def _save_record(batch: UploadBatch, record) -> bool:
         for d in (record.defect_rows or []):
             if not isinstance(d, dict):
                 continue
-            cat     = (d.get("category") or "").strip()
-            item    = (d.get("item") or "").strip()
-            major   = int(d.get("major", 0) or 0)
-            minor   = int(d.get("minor", 0) or 0)
-            comment = (d.get("comment") or "").strip()
-            if not cat and not item:
+            category_code  = (d.get("category_code") or "").strip()
+            category_label = (d.get("category") or "").strip()
+            defect_name    = (d.get("item") or "").strip()
+            major          = int(d.get("major", 0) or 0)
+            minor          = int(d.get("minor", 0) or 0)
+            comment        = (d.get("comment") or "").strip()
+
+            if not category_code and not defect_name:
                 continue
             if major == 0 and minor == 0 and not comment:
                 continue
+
             defect_objects.append(DefectEntry(
-                report=report,
-                category=cat,
-                item=item,
-                major=major,
-                minor=minor,
-                comment=comment,
+                report         = report,
+                category_code  = category_code,
+                category_label = category_label,
+                defect_name    = defect_name,
+                major          = major,
+                minor          = minor,
+                comment        = comment,
             ))
 
         if defect_objects:
+            logger.debug(
+                f"Attempting to bulk_create {len(defect_objects)} defect entries "
+                f"for report {report.pk} (file: {record.file_name})"
+            )
             DefectEntry.objects.bulk_create(defect_objects)
+        else:
+            logger.debug(
+                f"No defect entries to bulk_create for report {report.pk} "
+                f"after filtering (file: {record.file_name})."
+            )
 
         logger.info("Saved: %s → AuditReport #%s", record.file_name, report.pk)
         return True

@@ -17,16 +17,37 @@ class DefectEntry(BaseModel):
         related_name="defect_entries",
     )
 
-    category = models.CharField(max_length=100, blank=True, db_index=True)
-    item     = models.CharField(max_length=512, blank=True)
-    major    = models.PositiveIntegerField(default=0)
-    minor    = models.PositiveIntegerField(default=0)
-    comment  = models.TextField(blank=True)
+    # ── Canonical fields from defect_master ──────────────────────────────────
+    category_code  = models.CharField(
+        max_length=10,
+        blank=True,
+        db_index=True,
+        help_text="Single-letter category code from defect_master (e.g. 'A', 'B').",
+    )
+    category_label = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        help_text="Human-readable category label (e.g. 'Fabrics', 'Sewing').",
+    )
+    defect_name = models.CharField(
+        max_length=512,
+        blank=True,
+        help_text="Canonical defect item name from defect_master.",
+    )
+
+    # ── Counts ────────────────────────────────────────────────────────────────
+    major   = models.PositiveIntegerField(default=0)
+    minor   = models.PositiveIntegerField(default=0)
+    comment = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["category", "item"]
+        ordering = ["category_code", "defect_name"]
         verbose_name = "Defect Entry"
         verbose_name_plural = "Defect Entries"
 
     def __str__(self) -> str:
-        return f"{self.category} / {self.item} — {self.major}M/{self.minor}m"
+        return (
+            f"{self.category_code} / {self.defect_name} "
+            f"— {self.major}M/{self.minor}m"
+        )

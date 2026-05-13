@@ -77,8 +77,10 @@ AUDIT_QTY_SYNONYMS: list[str] = [
 ]
 
 DEFECT_QTY_SYNONYMS: list[str] = [
-    "major defects", "major defect", "total major",
-    "major",                     # "重不良\nMajor" → "major" ✓
+    "major defects",
+    "major defect",
+    "total major",
+    "major \n defect",                     # "重不良\nMajor" → "major" ✓
     "total no of defect",        # PQC row 41
 ]
 
@@ -247,7 +249,7 @@ def extract(
 
     # ── Defect Qty ────────────────────────────────────────────────────────
     defect_qty = _extract_qty(grid, DEFECT_QTY_SYNONYMS, _DEFAULT_DIR, "defect_qty", format_type)
-    if not defect_qty:
+    if not defect_qty or not defect_qty.isnumeric():
         defect_qty = _defect_qty_fallback(grid)
     result["defect_qty"] = defect_qty
 

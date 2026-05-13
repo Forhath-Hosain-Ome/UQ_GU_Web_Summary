@@ -1,98 +1,79 @@
 """
-defects.py
-----------
-Extracts the defect table from an audit report Excel sheet and maps every
-row to its canonical defect_master entry so data is saved consistently.
+defect_extractor.py
+-------------------
+Auto-discovers and extracts the structured defect table from an Excel sheet,
+then maps every row to its canonical entry in defect_master.py so the DB
+always receives consistent category + item names regardless of how the
+factory typed them in the Excel.
 
-────────────────────────────────────────────────────────────────────────────
-COLUMN LAYOUT VARIANTS
-────────────────────────────────────────────────────────────────────────────
+Structure understood from samples
+----------------------------------
+The defect table always follows this layout:
 
-The defect table header can appear in two layouts:
+  Row N   : "Defects" | ... | "Major Defect" | "Minor Defect" | "Comment"
+  Row N+1 : "A : Fabrics" | "1.Damage" | ...
+  ...
+  Row M   : "F : Others" | ... | "3.Others" | ...   ← last data row
 
-  Layout 5-col:   Category | Item | Major | Minor | Comment
-  Layout 4-col:             Item | Major | Minor | Comment
-                  (no Category column — item col contains both category
-                   separator rows and defect item rows mixed together)
+Detection strategy
+------------------
+1. Find the header row — scan ALL cells in each row for a cell whose text
+   == "defects" (case-insensitive). Works for both SPI (col A) and PQC
+   (non-col-A) layouts.
+2. Major / Minor / Comment column indices are discovered from that same
+   header row — NO hardcoded columns.
+3. Scan downward; category separator rows (e.g. "A : Fabrics") are skipped
+   and do NOT consume an item_no slot.
+4. Every non-category row gets a 1-based item_no (sequential position).
+5. item_no is looked up in defect_master.py for the given report_format to
+   get the canonical category label and item name.
+6. A partial-match check logs a WARNING if the Excel cell text diverges
+   significantly from the master name — data is still saved using the
+   canonical master name regardless.
+7. Stop after reading exactly defect_column_count item rows OR when the
+   end sentinel ("DO/Set/Col/Size") is hit — whichever comes first.
+8. Count validation: actual item rows vs defect_column_count is logged.
 
-REQUIRED columns (hard stop if any are missing):
-  Major, Minor, Comment  — all three must be found via synonym matching.
+defect_master mapping
+---------------------
+  report_format   defect_column_count   template_key
+  ─────────────   ───────────────────   ────────────
+  KNIT_35         35                    TEMPLATE_31  (31 actual items)
+  WOVEN_37        37                    TEMPLATE_37
+  SWEATER_37      37                    TEMPLATE_37
+  WOVEN_78        78                    TEMPLATE_78
 
-OPTIONAL columns:
-  Category  — used only to detect category separator rows more reliably.
-  Item      — used only to COUNT item rows for validation against
-              defect_column_count. The actual defect name always comes
-              from defect_master.py by position, never from Excel text.
+Output
+------
+(defect_rows, totals, meta)
 
-────────────────────────────────────────────────────────────────────────────
-HEADER VALIDITY RULE
-────────────────────────────────────────────────────────────────────────────
-
-  Major + Minor + Comment must ALL be found in the header row.
-  If any one of these three is missing → table is invalid → abort.
-
-────────────────────────────────────────────────────────────────────────────
-CATEGORY / ITEM ROW DETECTION
-────────────────────────────────────────────────────────────────────────────
-
-A data row is a CATEGORY SEPARATOR (skip, don't count as item) when ANY of:
-
-  1. The category column (if present) has a non-None/non-empty value.
-  2. The item column cell is None — a vertical merge shadow, which means
-     the cell above spanned multiple rows (how category headers are
-     structured in some templates).
-  3. The relevant cell (category col if present, else item col, else col A)
-     matches a known category text pattern:
-       Format A (SPI):  "A : Fabrics", "B : Sewing", …
-       Format B (PQC):  "A素材不良\n Material Defects", …
-
-Category separator rows do NOT consume an item_no slot.
-All other rows are item rows, counted positionally → item_no 1, 2, 3 …
-
-────────────────────────────────────────────────────────────────────────────
-COUNT VALIDATION
-────────────────────────────────────────────────────────────────────────────
-
-  expected_count = defect_column_count  (from BuyerFactoryPair)
-  actual_count   = number of item rows collected
-
-  A warning is logged if they differ; extraction still returns what was
-  found so the caller can decide how to handle partial results.
-
-────────────────────────────────────────────────────────────────────────────
-CONFIGURATION  (edit at the top of this file)
-────────────────────────────────────────────────────────────────────────────
-  _COL_SYNONYMS          add/remove synonyms per column role
-  _CATEGORY_FORMAT_A/B   regex patterns for category separator rows
-  defect_master.py       canonical names / add new templates there
-
-────────────────────────────────────────────────────────────────────────────
-RETURNS
-────────────────────────────────────────────────────────────────────────────
-  (defect_rows, totals, meta)
-
-  defect_rows : List[dict]  — one entry per item row
+  defect_rows : list of dicts
     {
-        "item_no":       int,   # 1-based position within this template
-        "category_code": str,   # from defect_master (e.g. "A")
-        "category":      str,   # canonical category label
-        "item":          str,   # canonical item name from defect_master
+        "item_no":       int,   # 1-based position = index into template
+        "category_code": str,   # e.g. "A"          — from defect_master
+        "category":      str,   # canonical label   — from defect_master
+        "item":          str,   # canonical name    — from defect_master
         "major":         int,
         "minor":         int,
         "comment":       str,
+        "name_matched":  bool,  # False → Excel text diverged; warning logged
     }
 
-  totals : dict  {"major": int, "minor": int}
+  totals : {"major": int, "minor": int}
 
-  meta : dict
-    {
-        "template_key":      str | None,  # e.g. "TEMPLATE_37"
-        "expected_count":    int,
-        "actual_count":      int,
-        "count_ok":          bool,
-        "has_category_col":  bool,   # True if a Category column was found
-        "has_item_col":      bool,   # True if an Item column was found
-    }
+  meta : {
+      "template_key":   str | None,
+      "expected_count": int,         # = defect_column_count
+      "actual_count":   int,         # rows actually collected
+      "count_ok":       bool,
+  }
+
+SCALABILITY NOTE
+----------------
+Adding a new template requires only two steps:
+  1. Add the template dict to defect_master.py (items + categories).
+  2. Add its count → key mapping to TEMPLATE_FOR_COUNT in defect_master.py.
+No changes needed here.
 """
 
 from __future__ import annotations
@@ -106,84 +87,22 @@ import openpyxl
 
 from final_summary.extraction.core import get_template_key, get_items, get_categories
 
+
 # ---------------------------------------------------------------------------
-# Synonym configuration — edit here to support new column label variants
+# Sentinel – the cell value that marks the end of the defect table
 # ---------------------------------------------------------------------------
 
-# All synonyms are matched case-insensitively after stripping whitespace.
-_COL_SYNONYMS: dict[str, list[str]] = {
-    "category": [
-        "category",
-        "cat",
-        "cat.",
-        "defect category",
-        "defect type",
-        "type",
-        "classification",
-        "カテゴリ",
-        "分類",
-    ],
-    "item": [
-        "defects",
-        "defect",
-        "defect name",
-        "defect item",
-        "defect description",
-        "item",
-        "items",
-        "description",
-        "不良項目",
-        "不良内容",
-        "不良名",
-    ],
-    "major": [
-        "major",
-        "maj",
-        "critical",
-        "cr",
-        "major defect",
-        "major defects",
-        "重大",
-        "重欠点",
-    ],
-    "minor": [
-        "minor",
-        "min",
-        "minor defect",
-        "minor defects",
-        "軽微",
-        "軽欠点",
-    ],
-    "comment": [
-        "comment",
-        "comments",
-        "remark",
-        "remarks",
-        "note",
-        "notes",
-        "observation",
-        "備考",
-        "コメント",
-    ],
-}
-
-# Regex patterns for category separator row detection
-_CATEGORY_FORMAT_A = re.compile(r"^[A-F]\s*:", re.IGNORECASE)  # "A : Fabrics"
-_CATEGORY_FORMAT_B = re.compile(r"^[A-F][^\x00-\x7F]")         # "A素材不良…"
+_END_SENTINEL_PATTERN = re.compile(
+    r"do\s*/\s*set\s*/\s*col\s*/\s*size", re.IGNORECASE
+)
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Helpers
 # ---------------------------------------------------------------------------
-
-def _norm(value: Any) -> str:
-    """Lowercase, strip, collapse internal whitespace."""
-    if value is None:
-        return ""
-    return re.sub(r"\s+", " ", str(value).strip().lower())
-
 
 def _to_int(value: Any) -> int:
+    """Convert a cell value to int, returning 0 on failure."""
     if value is None:
         return 0
     try:
@@ -192,187 +111,259 @@ def _to_int(value: Any) -> int:
         return 0
 
 
-def _matches_synonym(cell_value: Any, synonyms: list[str]) -> bool:
-    """True if the normalised cell text exactly equals any synonym."""
-    return _norm(cell_value) in synonyms
-
-
-def _looks_like_category(value: Any) -> bool:
-    """True when the cell value matches a known category separator pattern."""
-    if not value:
+def _is_end_sentinel(value: Any) -> bool:
+    if value is None:
         return False
-    s = str(value).strip()
-    return bool(_CATEGORY_FORMAT_A.match(s) or _CATEGORY_FORMAT_B.match(s))
+    return bool(_END_SENTINEL_PATTERN.search(str(value)))
 
 
-def _cell(row: tuple, col: Optional[int]) -> Any:
-    """Safe row[col] — returns None when col is None or out of range."""
-    if col is None or col >= len(row):
-        return None
-    return row[col]
-
-
-# ---------------------------------------------------------------------------
-# Step 1 — Header discovery
-# ---------------------------------------------------------------------------
-
-def _find_header(
-    rows: list[tuple],
-) -> Tuple[Optional[int], dict[str, Optional[int]]]:
+def _is_category_cell(value: Any) -> bool:
     """
-    Scan every row for the defect table header via synonym matching.
+    True for category separator rows in either template format.
 
-    Validity rule
-    -------------
-    Major + Minor + Comment must ALL be found.
-    Category and Item are optional.
+    Format A (SPI):  "A : Fabrics", "B : Sewing", …
+    Format B (PQC):  "A素材不良\n Material Defects", …
+    Also catches None — a vertical merge shadow of a category header above.
+    """
+    if value is None:
+        return True                             # merge shadow → category row
+    s = str(value).strip()
+    if not s:
+        return False
+    if re.match(r"^[A-F]\s*:", s):             # Format A
+        return True
+    if len(s) >= 2 and s[0] in "ABCDEF" and ord(s[1]) > 127:   # Format B
+        return True
+    return False
+
+
+def _partial_match(excel_text: str, master_name: str) -> bool:
+    """
+    True when the Excel item text shares at least one meaningful word with
+    the canonical master name.
+
+    Normalisation strips leading numbers/dots ("1.Damage" → "damage") so
+    positional prefixes never cause false mismatches.  Words of ≤ 2 chars
+    are ignored (articles, prepositions, etc.).
+
+    This is a sanity-check only — a mismatch logs a WARNING but never
+    blocks saving.
+    """
+    def _words(s: str) -> set[str]:
+        s = re.sub(r"[^a-z\s]", " ", s.lower())
+        return {w for w in s.split() if len(w) > 2}
+
+    return bool(_words(excel_text) & _words(master_name))
+
+
+# ---------------------------------------------------------------------------
+# Main extractor
+# ---------------------------------------------------------------------------
+
+def extract(
+    path: Path,
+    sheet_name: str = "Inspection Report",
+    defect_column_count: int = 37,
+    pair: Any = None,  # BuyerFactoryPair instance
+) -> Tuple[List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
+    """
+    Open *path* with openpyxl, extract the defect table from *sheet_name*,
+    and map every item row to its canonical defect_master entry.
+
+    Parameters
+    ----------
+    path                : Path to the Excel file.
+    sheet_name          : Preferred sheet name; falls back to first sheet.
+    defect_column_count : From BuyerFactoryPair.defect_column_count.
+                          Determines which defect_master template to use
+                          and how many item rows to read.
 
     Returns
     -------
-    (header_row_idx, col_map)
-      col_map keys: "category", "item", "major", "minor", "comment"
-      Values are 0-based column indices or None if not found.
-      header_row_idx is None when no valid header row exists.
+    (defect_rows, totals, meta)  — see module docstring for field details.
     """
+    # ── Resolve defect_column_count from pair if provided ───────────────────
+    if pair is not None:
+        try:
+            defect_column_count = pair.defect_column_count
+            logging.info(
+                f"[{path.name}] defect_column_count={defect_column_count} "
+                f"(from pair.report_type='{pair.report_type}')"
+            )
+        except AttributeError as e:
+            logging.warning(
+                f"[{path.name}] pair has no defect_column_count ({e}); "
+                f"using default={defect_column_count}"
+            )
+    else:
+        logging.info(
+            f"[{path.name}] No pair provided; "
+            f"using defect_column_count={defect_column_count}"
+        )
+
+    # ── Resolve defect_master template ──────────────────────────────────────
+    template_key = get_template_key(defect_column_count)
+    if template_key is None:
+        logging.warning(
+            f"[{path.name}] No defect_master template for "
+            f"defect_column_count={defect_column_count}. "
+            f"Canonical names unavailable; will use Excel text as fallback."
+        )
+    else:
+        logging.info(
+            f"[{path.name}] defect_column_count={defect_column_count} "
+            f"→ template '{template_key}'"
+        )
+
+    master_items = get_items(template_key)      if template_key else []
+    master_cats  = get_categories(template_key) if template_key else {}
+    item_by_no: dict[int, dict] = {it["item_no"]: it for it in master_items}
+
+    def _empty_meta() -> Dict[str, Any]:
+        return {
+            "template_key":   template_key,
+            "expected_count": defect_column_count,
+            "actual_count":   0,
+            "count_ok":       False,
+        }
+
+    # ── Open workbook ────────────────────────────────────────────────────────
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    except Exception as exc:
+        logging.error(f"Cannot open '{path.name}': {exc}")
+        return [], {}, _empty_meta()
+
+    # Build search order: preferred sheet first, then all others.
+    # The header scan below will try each sheet in turn and stop at the
+    # first one where the defect header row is found.
+    preferred = next(
+        (s for s in wb.sheetnames if s.lower() == sheet_name.lower()), None
+    )
+    search_order = (
+        [preferred] + [s for s in wb.sheetnames if s != preferred]
+        if preferred
+        else list(wb.sheetnames)
+    )
+
+    rows = []
+    for s_name in search_order:
+        candidate_rows = list(wb[s_name].iter_rows(values_only=True))
+        # Quick check: does this sheet contain a "defects" header cell?
+        found = any(
+            cell is not None and str(cell).strip().lower() == "defects"
+            for row in candidate_rows
+            for cell in row
+            if cell is not None
+        )
+        if found:
+            rows = candidate_rows
+            logging.info(f"[{path.name}] Defect table found on sheet '{s_name}'")
+            break
+        logging.debug(f"[{path.name}] Sheet '{s_name}': no defect header, skipping")
+
+    wb.close()
+
+    if not rows:
+        logging.warning(
+            f"[{path.name}] Defect header not found on any sheet "
+            f"(searched: {search_order})."
+        )
+        return [], {}, _empty_meta()
+
+    # ── Step 1: Find the header row ──────────────────────────────────────────
+    # Scan every cell (not just col A) so both SPI and PQC layouts are found.
+    header_row_idx: Optional[int] = None
+    item_col:    Optional[int] = None   # column containing defect item names
+    major_col:   Optional[int] = None
+    minor_col:   Optional[int] = None
+    comment_col: Optional[int] = None
+
     for r_idx, row in enumerate(rows):
         if not row:
             continue
-
-        col_map: dict[str, Optional[int]] = {
-            "category": None,
-            "item":     None,
-            "major":    None,
-            "minor":    None,
-            "comment":  None,
-        }
-
         for c_idx, cell in enumerate(row):
             if cell is None:
                 continue
-            for role, synonyms in _COL_SYNONYMS.items():
-                # First match wins for each role
-                if col_map[role] is None and _matches_synonym(cell, synonyms):
-                    col_map[role] = c_idx
+            normalised = str(cell).strip().lower()
+            if normalised == "defects" and item_col is None:
+                header_row_idx = r_idx
+                # If "Defects" header is in col A (index 0), item names
+                # are in col B (index 1) — col A holds the repeated
+                # category label on every data row in this layout.
+                item_col = c_idx + 1 if c_idx == 0 else c_idx
+            if header_row_idx == r_idx:
+                # Discover qty/comment columns from the same header row
+                if "major" in normalised and major_col is None:
+                    major_col = c_idx
+                if "minor" in normalised and minor_col is None:
+                    minor_col = c_idx
+                if "comment" in normalised and comment_col is None:
+                    comment_col = c_idx
+        if header_row_idx is not None:
+            break
 
-        # Hard requirement: major AND minor AND comment must all be present
-        if all(col_map[r] is not None for r in ("major", "minor", "comment")):
-            # Rule: The cell left to the 'Major' column is typically the 'Item' column
-            # if not explicitly found via synonym matching.
-            if col_map["item"] is None and col_map["major"] is not None and col_map["major"] > 0:
-                col_map["item"] = col_map["major"] - 1
+    if header_row_idx is None:
+        logging.warning(
+            f"[{path.name}] Defect header not found "
+            f"(no cell with text 'defects' in any row)."
+        )
+        return [], {}, _empty_meta()
 
-            found_roles = [r for r, v in col_map.items() if v is not None]
-            logging.info(
-                f"Defect header found at row {r_idx + 1}: "
-                f"roles={found_roles}  "
-                f"cat={col_map.get('category')} item={col_map.get('item')} "
-                f"major={col_map.get('major')} minor={col_map.get('minor')} "
-                f"comment={col_map['comment']}"
-            )
-            return r_idx, col_map
+    if major_col is None:
+        logging.warning(
+            f"[{path.name}] 'Major' column not found in defect header row."
+        )
+        return [], {}, _empty_meta()
 
-    return None, {
-        "category": None, "item": None,
-        "major": None, "minor": None, "comment": None,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Step 2 — Category / item row classification
-# ---------------------------------------------------------------------------
-
-def _is_category_row(
-    row: tuple,
-    category_col: Optional[int],
-    item_col: Optional[int],
-) -> bool:
-    """
-    Return True if this data row is a category separator to be skipped.
-
-    Rules (any one is sufficient):
-      1. Category column present and its cell is non-None / non-empty.
-      2. Item column present and its cell is None
-         → vertical merge shadow of a category header spanning rows above.
-      3. The most relevant cell (category col → item col → col A) matches
-         a known category text pattern.
-    """
-    cat_val  = _cell(row, category_col)
-    item_val = _cell(row, item_col)
-
-    # Rule 1 — explicit category column has a value in this row
-    if category_col is not None and cat_val not in (None, ""):
-        return True
-
-    # Rule 2 — item cell is None: vertical merge shadow of a category header
-    if item_col is not None and item_val is None:
-        return True
-
-    # Rule 3 — pattern match on the most informative available cell
-    check_val = (
-        cat_val  if category_col is not None else
-        item_val if item_col     is not None else
-        _cell(row, 0)
+    logging.info(
+        f"[{path.name}] Defect header at row {header_row_idx + 1} | "
+        f"item_col={item_col} major_col={major_col} "
+        f"minor_col={minor_col} comment_col={comment_col}"
     )
-    return _looks_like_category(check_val)
 
+    # ── Step 2: Scan data rows ───────────────────────────────────────────────
+    defect_rows: List[Dict[str, Any]] = []
+    item_position = 0   # 1-based; incremented only for real item rows
 
-# ---------------------------------------------------------------------------
-# Step 3 — Data extraction with positional mapping
-# ---------------------------------------------------------------------------
-
-def _extract_rows(
-    rows: list[tuple],
-    header_idx: int,
-    col_map: dict[str, Optional[int]],
-    defect_column_count: int,
-    template_key: str | None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
-    """
-    Iterate data rows after the header:
-      - Skip category separator rows (no item_no consumed).
-      - Map each remaining row positionally to defect_master by item_no.
-      - Stop after collecting exactly defect_column_count item rows.
-
-    Returns (defect_rows, totals, meta).
-    """
-    master_items = get_items(template_key)    if template_key else []
-    master_cats  = get_categories(template_key) if template_key else {}
-
-    # Ensure items are ordered by sort_order for positional mapping.
-    # We map the Excel row position to the sort_order because item_no may 
-    # restart per category in some templates (e.g. TEMPLATE_78).
-    sorted_master = sorted(master_items, key=lambda x: x.get("sort_order", 0))
-
-    category_col = col_map["category"]
-    item_col     = col_map["item"]
-    major_col    = col_map["major"]
-    minor_col    = col_map["minor"]
-    comment_col  = col_map["comment"]
-
-    defect_rows:  List[Dict[str, Any]] = []
-    item_position = 0   # 1-based; only incremented for real item rows
-
-    for r_idx in range(header_idx + 1, len(rows)):
+    for r_idx in range(header_row_idx + 1, len(rows)):
         # Stop once we have exactly defect_column_count items
         if item_position >= defect_column_count:
             break
 
-        row = rows[r_idx]
-        if not row:
+        row   = rows[r_idx]
+        col_a = row[0] if row else None
+
+        # Stop at end sentinel
+        if _is_end_sentinel(col_a):
+            break
+
+        # item_cell: col B (item_col) always holds the defect item name.
+        # col A holds the category label — either the real value on the
+        # first row of a merged block, or None (merge shadow) on the rest.
+        # We track the category from col A but NEVER use it to skip rows.
+        item_cell = (
+            row[item_col]
+            if item_col is not None and item_col < len(row)
+            else None
+        )
+
+        # Update current category whenever col A has a category label.
+        # (merge shadow rows have col A = None → keep previous category)
+        if col_a is not None and _is_category_cell(col_a):
+            _current_category_from_col_a = str(col_a).strip()
+
+        # Skip only truly empty rows — both item cell AND col A are None/blank.
+        item_text = str(item_cell).strip() if item_cell is not None else ""
+        col_a_text = str(col_a).strip() if col_a is not None else ""
+        if not item_text and not col_a_text:
+            logging.debug(f"  Row {r_idx + 1}: empty row → skipped")
             continue
 
-        if _is_category_row(row, category_col, item_col):
-            logging.debug(f"  Row {r_idx + 1}: category separator → skipped")
-            continue
+        item_position += 1  # this row's 1-based index in the template
 
-        item_position += 1  # positional item_no (1-based)
-
-        # Canonical names always from defect_master — never from Excel text
-        master_entry = sorted_master[item_position - 1] if item_position <= len(sorted_master) else None
-        
-        # Use item_no from master if available (id and serial)
-        item_id_serial = master_entry["item_no"] if (master_entry and "item_no" in master_entry) else item_position
-
+        # ── Map to defect_master by position ────────────────────────────────
+        master_entry   = item_by_no.get(item_position)
         category_code  = master_entry["category_code"] if master_entry else ""
         category_label = (
             master_cats.get(category_code, {}).get("label", "")
@@ -380,23 +371,48 @@ def _extract_rows(
         )
         canonical_name = (
             master_entry["name"] if master_entry
-            else f"Item {item_position}"   # fallback when template unknown
+            else str(item_cell or "").strip() or f"Item {item_position}"
         )
 
-        major   = _to_int(_cell(row, major_col))
-        minor   = _to_int(_cell(row, minor_col))
-        comment = str(_cell(row, comment_col) or "").strip()
+        # ── Partial-match sanity check ───────────────────────────────────────
+        excel_item_text = str(item_cell or "").strip()
+        if master_entry and excel_item_text:
+            matched = _partial_match(excel_item_text, canonical_name)
+            if not matched:
+                logging.warning(
+                    f"[{path.name}] Row {r_idx + 1} item_no={item_position}: "
+                    f"Excel text '{excel_item_text}' has low overlap with "
+                    f"master name '{canonical_name}'. "
+                    f"Saving with master name regardless."
+                )
+        else:
+            matched = master_entry is not None
+
+        # ── Extract quantities ───────────────────────────────────────────────
+        major   = _to_int(row[major_col]   if major_col   < len(row) else None)
+        minor   = _to_int(
+            row[minor_col] if minor_col is not None and minor_col < len(row) else None
+        )
+        comment = (
+            str(row[comment_col]).strip()
+            if comment_col is not None
+            and comment_col < len(row)
+            and row[comment_col] is not None
+            else ""
+        )
 
         defect_rows.append({
-            "item_no":       item_id_serial,
+            "item_no":       item_position,
             "category_code": category_code,
             "category":      category_label,
             "item":          canonical_name,
             "major":         major,
             "minor":         minor,
             "comment":       comment,
+            "name_matched":  matched,
         })
 
+    # ── Step 3: Totals + count validation ────────────────────────────────────
     totals = {
         "major": sum(r["major"] for r in defect_rows),
         "minor": sum(r["minor"] for r in defect_rows),
@@ -406,128 +422,20 @@ def _extract_rows(
     count_ok     = actual_count == defect_column_count
     if not count_ok:
         logging.warning(
-            f"Defect count mismatch: expected {defect_column_count}, "
-            f"got {actual_count}."
+            f"[{path.name}] Defect count mismatch: "
+            f"expected {defect_column_count}, got {actual_count}."
         )
 
     meta: Dict[str, Any] = {
-        "template_key":     template_key,
-        "expected_count":   defect_column_count,
-        "actual_count":     actual_count,
-        "count_ok":         count_ok,
-        "has_category_col": category_col is not None,
-        "has_item_col":     item_col     is not None,
+        "template_key":   template_key,
+        "expected_count": defect_column_count,
+        "actual_count":   actual_count,
+        "count_ok":       count_ok,
     }
-
-    return defect_rows, totals, meta
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def extract(
-    path: Path,
-    sheet_name: Optional[str] = None,
-    grid=None,                    # unused — kept for uniform extractor signature
-    defect_column_count: int = 37,
-) -> Tuple[List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
-    """
-    Extract the defect table from *path* / *sheet_name* and map every row
-    to its canonical defect_master entry.
-
-    Parameters
-    ----------
-    path                : Path to the Excel file
-    sheet_name          : Preferred sheet; falls back to scanning all sheets
-    grid                : Ignored — openpyxl is used directly for raw access
-    defect_column_count : From BuyerFactoryPair.defect_column_count.
-                          Controls how many item rows to read and selects
-                          the correct template from defect_master.py.
-
-    Returns
-    -------
-    (defect_rows, totals, meta)  — see module docstring for field details.
-    """
-    def _empty_meta(tkey: str | None) -> Dict[str, Any]:
-        return {
-            "template_key":     tkey,
-            "expected_count":   defect_column_count,
-            "actual_count":     0,
-            "count_ok":         False,
-            "has_category_col": False,
-            "has_item_col":     False,
-        }
-
-    # Resolve template key (tolerance ±4 applied inside get_template_key)
-    template_key = get_template_key(defect_column_count)
-    if template_key is None:
-        logging.warning(
-            f"[{path.name}] No defect_master template for "
-            f"defect_column_count={defect_column_count}. "
-            f"Items will use positional fallback names."
-        )
-    else:
-        logging.info(
-            f"[{path.name}] defect_column_count={defect_column_count} "
-            f"→ template '{template_key}'"
-        )
-
-    # Open workbook in read_only mode so that vertical merge shadows
-    # correctly return None (used by _is_category_row Rule 2).
-    try:
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    except Exception as exc:
-        logging.error(f"defects.extract: cannot open '{path.name}': {exc}")
-        return [], {}, _empty_meta(template_key)
-
-    # Sheet search order: preferred first, then all others
-    sheet_names  = wb.sheetnames
-    search_order: list[str] = []
-    if sheet_name and sheet_name in sheet_names:
-        search_order.append(sheet_name)
-    search_order.extend(s for s in sheet_names if s not in search_order)
-
-    rows:       list[tuple]              = []
-    header_idx: Optional[int]            = None
-    col_map:    dict[str, Optional[int]] = {
-        "category": None, "item": None,
-        "major": None, "minor": None, "comment": None,
-    }
-
-    for s_name in search_order:
-        ws        = wb[s_name]
-        temp_rows = list(ws.iter_rows(values_only=True))
-        h_idx, c_map = _find_header(temp_rows)
-        if h_idx is not None:
-            rows       = temp_rows
-            header_idx = h_idx
-            col_map    = c_map
-            logging.info(
-                f"[{path.name}] Defect table on sheet '{s_name}' "
-                f"(header row {h_idx + 1})"
-            )
-            break
-
-    wb.close()
-
-    if header_idx is None:
-        logging.warning(
-            f"[{path.name}] Defect header not found — "
-            f"major + minor + comment columns not all present in any row "
-            f"via synonym matching."
-        )
-        return [], {}, _empty_meta(template_key)
-
-    defect_rows, totals, meta = _extract_rows(
-        rows, header_idx, col_map, defect_column_count, template_key
-    )
 
     logging.info(
-        f"[{path.name}] Defects: "
-        f"{meta['actual_count']}/{meta['expected_count']} rows  "
-        f"count_ok={meta['count_ok']}  totals={totals}  "
-        f"layout={'5-col (cat+item)' if meta['has_category_col'] else '4-col (item only)'}"
+        f"[{path.name}] Defects: {actual_count}/{defect_column_count} rows | "
+        f"count_ok={count_ok} | totals={totals}"
     )
 
     return defect_rows, totals, meta
