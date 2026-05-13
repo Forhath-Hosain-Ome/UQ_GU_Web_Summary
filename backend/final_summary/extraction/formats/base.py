@@ -31,11 +31,7 @@ positional argument and `format_type` as a keyword argument:
 
     extractor_fn(grid, path, format_type=self.REPORT_TYPE)   # ✅ correct
 
-Previously they were called as:
 
-    extractor_fn(grid, format_type=self.REPORT_TYPE)          # ❌ wrong
-    # path received self.REPORT_TYPE ("WOVEN_78")
-    # format_type stayed at default ""
 
 This caused:
   • Fixed-cell fallbacks (FORMAT_FIXED_CELLS) never firing → ship_qty / audit_qty
