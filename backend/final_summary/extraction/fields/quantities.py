@@ -233,7 +233,7 @@ def extract(
 
     # ── PO Qty ────────────────────────────────────────────────────────────
     po_qty_raw = _extract_qty(grid, PO_QTY_SYNONYMS, _PO_DIR, "po_qty", format_type)
-    result["po_qty"] = po_qty_raw
+    result["po_qty"] = po_qty_raw or result["po_qty"]
     result.update(_parse_po_qty(po_qty_raw))
 
     # ── DO Qty ────────────────────────────────────────────────────────────

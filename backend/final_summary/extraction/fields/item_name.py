@@ -25,8 +25,6 @@ SYNONYMS: list[str] = [
     "product name",
     "item name:",
     "item name",
-    "description",
-    "item",
 ]
 
 DIRECTION = DirectionRule.DOWN

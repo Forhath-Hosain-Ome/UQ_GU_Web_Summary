@@ -97,18 +97,29 @@ def _build_writer_data(
 ) -> tuple[list[dict], dict[int, list[dict]]]:
     """Build records list + defect_map for summary_writer."""
     ids = [r.pk for r in reports]
-
+ 
     defect_map: dict[int, list[dict]] = {}
     for de in (
         DefectEntry.objects
         .filter(report_id__in=ids)
-        .order_by("category", "item")
+        .order_by("category", "defect_name")      # order by combined category field
     ):
+        # Parse combined "category" ("CODE - LABEL") into parts
+        cat_raw = (de.category or "").strip()
+        if " - " in cat_raw:
+            code, label = cat_raw.split(" - ", 1)
+            code  = code.strip()
+            label = label.strip()
+        else:
+            code  = cat_raw
+            label = cat_raw
+
         defect_map.setdefault(de.report_id, []).append({
             "audit_report_id": de.report_id,
-            "category":        de.category,
-            "item":            de.item,
-            "major_count":     de.major,
+            "category_code":   code,                # e.g. "A"
+            "category_label":  label,               # e.g. "Fabrics"
+            "item":            de.defect_name,       # canonical name — kept as "item"
+            "major_count":     de.major,             # so summary_writer needs no change
             "minor_count":     de.minor,
             "comment":         de.comment,
         })

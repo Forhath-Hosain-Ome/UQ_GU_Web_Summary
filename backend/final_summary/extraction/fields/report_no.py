@@ -1,4 +1,4 @@
-"""
+r"""
 extraction/fields/report_no.py
 --------------------------------
 Extracts the Report Number from an audit report sheet.
@@ -8,8 +8,8 @@ Three-stage strategy
 1. LABEL SEARCH — scan for known report number labels; accept any non-empty
    value to the right (pattern validation is a soft check, not a gate).
    This handles:
-     - Standard format: "EU26-02CIPL-001"  → passes pattern
-     - PQC format:      "01"               → fails pattern but is still valid
+      - Standard format: "EU26-02CIPL-001"  → passes pattern
+      - PQC format:      "01"               → fails pattern but is still valid
 
 2. PATTERN SEARCH — scan the entire grid for any cell matching the standard
    Report Number pattern ([A-Z]{2}\\d{2}-\\d{2}[A-Z0-9]+-\\d+).
@@ -43,8 +43,6 @@ SYNONYMS: list[str] = [
     "inspection report no",
     "report no.",
     "audit report no",
-    # PQC: "検品報告書NO\nInspection Report No" → "no inspection report no"
-    "no inspection report no",
 ]
 
 DIRECTION = DirectionRule.RIGHT

@@ -56,6 +56,7 @@ PO_EDT_SYNONYMS: list[str] = [
 PO_WH_SYNONYMS: list[str] = [
     "po w h",
     "po wh",
+    "powh",
     "po w/h",
     "warehouse",
     "po warehouse",

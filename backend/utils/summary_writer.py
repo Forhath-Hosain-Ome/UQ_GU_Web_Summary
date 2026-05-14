@@ -285,12 +285,18 @@ def _build_defect_header_map(ws, defect_start_col: int) -> Dict[str, int]:
         name = str(raw).strip()
         if name and name not in header_map:
             header_map[name] = col
+        stripped = _strip_prefix(name)
+        if stripped not in header_map:
+            header_map[stripped] = col
     logger.debug(
         "defect_header_map: sheet='%s' found %d headers from col %s",
         ws.title, len(header_map), get_column_letter(defect_start_col),
     )
     return header_map
 
+def _strip_prefix(name: str) -> str:
+    """'3.Hole, tear' → 'Hole, tear'"""
+    return re.sub(r"^\d+\.", "", name).strip()
 
 def _resolve_defect_col(
     item_name: str,
@@ -298,6 +304,10 @@ def _resolve_defect_col(
 ) -> Optional[int]:
     """Exact match first, case-insensitive fallback. None if not found."""
     col = header_map.get(item_name)
+    if col is not None:
+        return col
+    stripped = _strip_prefix(item_name)
+    col = header_map.get(stripped)
     if col is not None:
         return col
     lower = item_name.lower()
@@ -335,7 +345,7 @@ def _validate_defects(
             file_name = rec.get("file_name", "")
 
             for d in defect_items_by_report.get(rid, []):
-                item_name = (d.get("item") or "").strip()
+                item_name = (d.get("item") or "").strip()       # "item" key kept in export_view
                 if not item_name:
                     continue
                 major = _to_int(d.get("major_count", 0))
@@ -343,11 +353,12 @@ def _validate_defects(
                     continue
                 if _resolve_defect_col(item_name, header_map) is None:
                     mismatches.append({
-                        "file_name": file_name,
-                        "report_id": rid,
-                        "sheet":     sheet_name,
-                        "item":      item_name,
-                        "category":  (d.get("category") or "").strip(),
+                        "file_name":    file_name,
+                        "report_id":    rid,
+                        "sheet":        sheet_name,
+                        "item":         item_name,
+                        "category_code":  (d.get("category_code") or "").strip(),
+                        "category_label": (d.get("category_label") or "").strip(),
                     })
 
     return mismatches
@@ -386,7 +397,7 @@ def _write_sheet(
 
         # Defect columns — placed by template header position
         for d in defect_items_by_report.get(rid, []):
-            item_name = (d.get("item") or "").strip()
+            item_name = (d.get("item") or "").strip()           # "item" key kept in export_view
             if not item_name:
                 continue
             major = _to_int(d.get("major_count", 0))
@@ -395,6 +406,7 @@ def _write_sheet(
             col_idx = _resolve_defect_col(item_name, header_map)
             if col_idx:
                 ws.cell(row=current_row, column=col_idx).value = major
+ 
 
         current_row += 1
 

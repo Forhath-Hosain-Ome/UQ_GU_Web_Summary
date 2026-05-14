@@ -1,4 +1,4 @@
-"""
+r"""
 validator.py
 ------------
 Multi-layer validation and refinement of AuditRecord objects.
