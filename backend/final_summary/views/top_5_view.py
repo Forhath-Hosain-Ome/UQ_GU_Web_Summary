@@ -92,7 +92,7 @@ def aggregate_report(
     for de in DefectEntry.objects.filter(report_id__in=report_ids):
         defect_map.setdefault(de.report_id, []).append({
             "category":    de.category,
-            "item":        de.item,
+            "item":        de.defect_name,    # keep key as "item" — only used locally
             "major_count": de.major,
             "minor_count": de.minor,
         })

@@ -212,7 +212,7 @@ def _build_top5_defects(
     entries = (
         DefectEntry.objects
         .filter(report_id__in=report_ids)
-        .values("category", "item")
+        .values("category", "defect_name")
         .annotate(qty=Sum("major") + Sum("minor"))
         .order_by("-qty")
     )
@@ -233,7 +233,7 @@ def _build_top5_defects(
         categories = list(dict.fromkeys(e["category"] for e in group))  # preserve order, dedup
         items_by_cat: dict[str, list[str]] = defaultdict(list)
         for e in group:
-            items_by_cat[e["category"]].append(e["item"])
+            items_by_cat[e["category"]].append(e["defect_name"])
 
         if len(categories) == 1:
             # Same category — one category, items comma-joined

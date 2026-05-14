@@ -138,7 +138,7 @@ class RetryDownloadView(APIView):
         for r in blocked_reports:
             defect_entries = list(
                 DefectEntry.objects.filter(report=r).values(
-                    "category", "item", "major", "minor", "comment"
+                    "serial", "category", "defect_name", "major", "minor", "comment"
                 )
             )
             do_orders = []
@@ -190,9 +190,15 @@ class RetryDownloadView(APIView):
                 "remarks":              r.remarks,
                 "do_set_col_size":      r.do_set_col_size,
                 "do_note":              r.do_note,
-                "defect_rows":          [
-                    {"category": d["category"], "item": d["item"],
-                     "major": d["major"], "minor": d["minor"], "comment": d["comment"]}
+                "defect_rows": [
+                    {
+                        "serial":      d["serial"],
+                        "category":    d["category"],
+                        "defect_name": d["defect_name"],
+                        "major":       d["major"],
+                        "minor":       d["minor"],
+                        "comment":     d["comment"],
+                    }
                     for d in defect_entries
                 ],
                 "do_orders":            do_orders,

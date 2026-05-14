@@ -97,7 +97,7 @@ class UploadBatchListSerializer(serializers.ModelSerializer):
 class DefectEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model  = DefectEntry
-        fields = ["id", "category", "item", "major", "minor", "comment"]
+        fields = ["id", "serial", "category", "defect_name", "major", "minor", "comment"]
 
 
 class AuditReportListSerializer(serializers.ModelSerializer):
