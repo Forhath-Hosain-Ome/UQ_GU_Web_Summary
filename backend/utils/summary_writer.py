@@ -235,6 +235,9 @@ def _normalise(key: str, value: Any) -> Any:
     if value in ("", "-"):   return None
     return value
 
+def _strip_prefix(name: str) -> str:
+    """'3.Hole, tear' → 'Hole, tear'"""
+    return re.sub(r"^\d+\.", "", name).strip()
 
 # =============================================================================
 # CANONICAL TYPE
@@ -283,8 +286,13 @@ def _build_defect_header_map(ws, defect_start_col: int) -> Dict[str, int]:
         if raw is None:
             continue
         name = str(raw).strip()
-        if name and name not in header_map:
+        if not name:
+            continue
+        if name not in header_map:
             header_map[name] = col
+        stripped = _strip_prefix(name)
+        if stripped and stripped not in header_map:
+            header_map[stripped] = col
     logger.debug(
         "defect_header_map: sheet='%s' found %d headers from col %s",
         ws.title, len(header_map), get_column_letter(defect_start_col),

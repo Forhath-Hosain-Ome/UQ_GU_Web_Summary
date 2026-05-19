@@ -102,12 +102,12 @@ def _build_writer_data(
     for de in (
         DefectEntry.objects
         .filter(report_id__in=ids)
-        .order_by("category", "item")
+        .order_by("category", "defect_name")
     ):
         defect_map.setdefault(de.report_id, []).append({
             "audit_report_id": de.report_id,
             "category":        de.category,
-            "item":            de.item,
+            "item":            de.defect_name,
             "major_count":     de.major,
             "minor_count":     de.minor,
             "comment":         de.comment,
