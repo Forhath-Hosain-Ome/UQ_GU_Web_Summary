@@ -102,7 +102,7 @@ def _build_writer_data(
     for de in (
         DefectEntry.objects
         .filter(report_id__in=ids)
-        .order_by("category", "defect_name")      # order by combined category field
+        .order_by("category", "defect_name")
     ):
         # Parse combined "category" ("CODE - LABEL") into parts
         cat_raw = (de.category or "").strip()
@@ -116,10 +116,9 @@ def _build_writer_data(
 
         defect_map.setdefault(de.report_id, []).append({
             "audit_report_id": de.report_id,
-            "category_code":   code,                # e.g. "A"
-            "category_label":  label,               # e.g. "Fabrics"
-            "item":            de.defect_name,       # canonical name — kept as "item"
-            "major_count":     de.major,             # so summary_writer needs no change
+            "category":        de.category,
+            "item":            de.defect_name,
+            "major_count":     de.major,
             "minor_count":     de.minor,
             "comment":         de.comment,
         })
