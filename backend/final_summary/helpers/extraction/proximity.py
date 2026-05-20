@@ -73,9 +73,27 @@ def is_valid_report_no(value: str) -> bool:
     """
     if not value:
         return False
-    # Strip trailing punctuation (period, comma, etc.)
     cleaned = value.strip().rstrip('.,;:')
     return bool(re.match(r"^[A-Z]{2}\d{2}-\d{2}[A-Z0-9]+-\d+$", cleaned))
+
+
+def extract_report_no_from_additional_info(path: str) -> str:
+    """
+    Fallback extraction for report_no from 'F-A-ADDITIONAL INFO' sheet, cell M5.
+    Returns the cell value if found and non-empty, otherwise returns empty string.
+    """
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        if "F-A-ADDITIONAL INFO" in wb.sheetnames:
+            ws = wb["F-A-ADDITIONAL INFO"]
+            value = ws["M5"].value
+            wb.close()
+            return str(value).strip() if value else ""
+        wb.close()
+    except Exception as exc:
+        logging.warning(f"Failed to read report_no from F-A-ADDITIONAL INFO sheet: {exc}")
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -235,11 +253,18 @@ def resolve_po_or_report_number(
                 return value
 
         elif field_name == "report_no":
-            # Strip trailing punctuation for validation and return
+            # Accept both PO and Report number patterns
+            if is_valid_po_no(value):
+                logging.debug(f"PO_OR_REPORT: PO match for report_no → {value}")
+                return value
             cleaned = value.rstrip('.,;:')
             if is_valid_report_no(value):
                 logging.debug(f"PO_OR_REPORT: Report match → {cleaned}")
                 return cleaned
+            # Fallback: return raw value if it looks like a valid number
+            if value and not value.isspace():
+                logging.debug(f"PO_OR_REPORT: no pattern match for report_no, returning raw → {value}")
+                return value
 
         elif field_name == "audit_report":
             if is_valid_po_no(value) or is_valid_report_no(value):

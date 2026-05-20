@@ -184,6 +184,22 @@ def apply_defect_qty_fallback(record: AuditRecord, path: Path) -> None:
         logging.info(f"  defect_qty (fallback): '{value}'")
 
 
+def apply_report_no_fallback(record: AuditRecord, path: Path) -> None:
+    """
+    If report_no is still empty after other extraction attempts,
+    attempt to read from 'F-A-ADDITIONAL INFO' sheet, cell M5.
+    Mutates *record* in place.
+    """
+    if record.report_no:
+        return
+
+    from .proximity import extract_report_no_from_additional_info
+    value = extract_report_no_from_additional_info(str(path))
+    if value:
+        record.report_no = value
+        logging.info(f"  report_no (fallback from F-A-ADDITIONAL INFO M5): '{value}'")
+
+
 # ---------------------------------------------------------------------------
 # PO quantity routing
 # ---------------------------------------------------------------------------
@@ -289,6 +305,9 @@ def post_process_record(record: AuditRecord, path: Path) -> AuditRecord:
 
     # Stage 6 – defect qty fallback
     apply_defect_qty_fallback(record, path)
+
+    # Stage 6.5 – report_no fallback from F-A-ADDITIONAL INFO M5
+    apply_report_no_fallback(record, path)
 
     # Stage 7 – route PO qty to typed sub-field
     record = apply_po_qty_extraction(record)

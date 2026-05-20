@@ -422,7 +422,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                 list="fs-factory-opts"
               />
               <datalist id="fs-factory-opts">
-                {(options?.factories || []).map(f => <option key={f} value={f} />)}
+                {Array.from(new Set(options?.factories || [])).map(f => <option key={f} value={f} />)}
               </datalist>
             </div>
             <div>
@@ -436,7 +436,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                 list="fs-client-opts"
               />
               <datalist id="fs-client-opts">
-                {(options?.clients || []).map(c => <option key={c} value={c} />)}
+                {Array.from(new Set(options?.clients || [])).map(c => <option key={c} value={c} />)}
               </datalist>
             </div>
             <div>
@@ -464,7 +464,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                   onChange={e => set("style", e.target.value)} style={fieldStyle}
                   list="fs-style-opts" />
                 <datalist id="fs-style-opts">
-                  {(options.styles || []).slice(0, 100).map(s => <option key={s} value={s} />)}
+                  {Array.from(new Set(options.styles || [])).slice(0, 100).map(s => <option key={s} value={s} />)}
                 </datalist>
               </div>
               <div>
@@ -473,7 +473,7 @@ function ExportStage({ lastBatchId, lastCount }) {
                   onChange={e => set("po", e.target.value)} style={fieldStyle}
                   list="fs-po-opts" />
                 <datalist id="fs-po-opts">
-                  {(options.po_numbers || []).slice(0, 100).map(p => <option key={p} value={p} />)}
+                  {Array.from(new Set(options.po_numbers || [])).slice(0, 100).map(p => <option key={p} value={p} />)}
                 </datalist>
               </div>
             </div>

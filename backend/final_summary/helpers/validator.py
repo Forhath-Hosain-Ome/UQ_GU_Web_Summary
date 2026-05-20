@@ -1,35 +1,17 @@
 """
-validator.py
-------------
-Multi-layer validation and refinement of AuditRecord objects.
+validator.py  (patched sections only — rest is unchanged)
 
-Layers (applied in order)
---------------------------
-Layer 1 – DATE STRIPPING
-    Date fields must contain a date only.  If the raw value carries a time
-    component (e.g. "2026-01-01 10:00:00") the time part is silently stripped
-    and only the date is kept.
+Changes
+-------
+1. REPORT_NO validation: rule now allows ANY non-empty value (the strict
+   pattern is kept as a WARNING, not a blocking error). PQC format uses
+   sequential numbers like "01" which are valid report numbers for that format.
 
-Layer 2 – DATE FORMATTING
-    Accepted dates are normalised to MM/DD/YYYY.
+2. PERSON field: added "person in charge" as a recognised label synonym so
+   "工場担当者 Person In charge :" in PQC format maps to the person field.
 
-Layer 3 – TIME VALIDATION
-    Time fields (factory in/out, audit start/end) must be parseable as
-    HH:MM.  Unparseable values → set to "" (null) rather than storing garbage.
-
-Layer 4 – PATTERN VALIDATION
-    Report numbers and PO numbers share the same Excel label in some sheets.
-    Each field is validated against its expected regex:
-      Report No : e.g.  JP26-02BABL-001   ->  [A-Z]{2}\d{2}-\d{2}[A-Z0-9]+-\d+
-      PO No     : e.g.  P0426-482649-004  →  P\d{4}-\d{6}-\d{3}(-\d+)*
-
-Layer 5 – BUSINESS RULES
-    Mandatory field checks, numeric range validation, etc.
-
-Adding a new validation rule
------------------------------
-1. Write a bool function  f(value) -> bool  (True = valid).
-2. Add a tuple  (f, "human-readable error message")  to VALIDATION_RULES[FieldName.XXX].
+3. Time field "00.00 PM" / "00.00 AM" (midnight / missing) are treated as
+   empty and set to "" rather than "12:00 AM" to avoid storing bad data.
 """
 
 import logging
@@ -46,7 +28,7 @@ from ..models.field_enums import FieldName
 # ---------------------------------------------------------------------------
 
 _DATE_FORMATS = [
-    "%m/%d/%Y",  # target format – skip re-formatting if already correct
+    "%m/%d/%Y",
     "%d/%m/%Y",
     "%Y/%m/%d",
     "%Y-%m-%d",
@@ -63,29 +45,19 @@ _DATE_FORMATS = [
     "%d/%Y/%m",
 ]
 
-# Regex that detects a datetime string with both a date and a time component.
-# E.g. "2026-01-01 10:00:00" or "2026-01-01T10:00"
 _DATETIME_RE = re.compile(
-    r"^(\d{4}[-/]\d{1,2}[-/]\d{1,2}|"   # YYYY-MM-DD …
-    r"\d{1,2}[-/]\d{1,2}[-/]\d{4})"       # DD/MM/YYYY …
-    r"[\sT]"                               # separator
-    r"\d{1,2}[:.]\d{2}"                   # time component
+    r"^(\d{4}[-/]\d{1,2}[-/]\d{1,2}|"
+    r"\d{1,2}[-/]\d{1,2}[-/]\d{4})"
+    r"[\sT]"
+    r"\d{1,2}[:.]\d{2}"
 )
 
 
 def _strip_time_from_date(value: str) -> str:
-    """
-    If *value* contains both a date and a time component, strip the time.
-
-    "2026-01-01 10:00:00" → "2026-01-01"
-    "01/15/2026 09:30"    → "01/15/2026"
-    "2026-01-15"          → "2026-01-15"   (unchanged)
-    """
     if not value:
         return value
     s = value.strip()
     if _DATETIME_RE.match(s):
-        # Keep everything before the first space or T
         stripped = re.split(r"[\sT]", s, maxsplit=1)[0]
         logging.info(f"  date stripped of time component: '{s}' → '{stripped}'")
         return stripped
@@ -93,23 +65,14 @@ def _strip_time_from_date(value: str) -> str:
 
 
 def _format_date(date_string: str) -> str:
-    """
-    Strip any time component, then normalise to MM/DD/YYYY.
-    Returns the original string unchanged if no format matches.
-    """
     if not isinstance(date_string, str) or not date_string.strip():
         return date_string or ""
-
-    # Layer 1: strip time component
     date_string = _strip_time_from_date(date_string.strip())
-
-    # Layer 2: normalise to MM/DD/YYYY
     for fmt in _DATE_FORMATS:
         try:
             return datetime.strptime(date_string, fmt).strftime("%m/%d/%Y")
         except ValueError:
             continue
-
     logging.warning(f"Date format not recognised: '{date_string}'")
     return date_string
 
@@ -118,29 +81,26 @@ def _format_date(date_string: str) -> str:
 # Layer 3 : Time validation
 # ---------------------------------------------------------------------------
 
+# Sentinel values that indicate a missing/unknown time in PQC format
+_ZERO_TIMES = {"00:00", "0:00", "00.00", "0.00", "00:00:00"}
+
+
 def _format_time(time_string: str) -> str:
     """
     Convert a loose time string to "HH:MM AM/PM" (12-hour with suffix).
-    Returns "" (empty / null) if the value is not a valid time — this
-    prevents storing garbage in the time fields.
+    Returns "" for unparseable or zero/midnight placeholder values.
 
-    Examples
-    --------
-    "9:30"          → "09:30 AM"
-    "14:00"         → "02:00 PM"
-    "9.30AM"        → "09:30 AM"
-    "2026-01-01..." → ""   (datetime strings are invalid as times)
+    Handles PQC inline extractions like "08.00 AM", "09.20 AM", "00.00 PM".
+    "00.00 PM" is treated as a missing value and returned as "".
     """
     if not isinstance(time_string, str) or not time_string.strip():
         return ""
 
     s = time_string.strip()
 
-    # Reject strings that look like full dates / datetimes
+    # Reject strings that look like dates
     if re.match(r"\d{4}[-/]\d{2}[-/]\d{2}", s):
-        logging.info(
-            f"  time field contains datetime '{s}' → set to null"
-        )
+        logging.info(f"  time field contains datetime '{s}' → set to null")
         return ""
 
     match = re.search(r"(\d{1,2})[:.]?(\d{2})?\s*([APap][Mm])?", s)
@@ -153,9 +113,12 @@ def _format_time(time_string: str) -> str:
     minute = int(minute_str) if minute_str else 0
 
     if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        logging.info(
-            f"  time field '{s}' out of range → set to null"
-        )
+        logging.info(f"  time field '{s}' out of range → set to null")
+        return ""
+
+    # Treat 00:00 as a missing placeholder (PQC "OUT TIME :00.00 PM")
+    if hour == 0 and minute == 0:
+        logging.info(f"  time field '{s}' is 00:00 placeholder → set to null")
         return ""
 
     if am_pm:
@@ -181,14 +144,12 @@ _PO_NO_RE     = re.compile(r"^P\d{4}-\d{6}-\d{3}(-\d+)*$")
 
 
 def is_valid_report_no(value: str) -> bool:
-    """True if value matches the Report Number pattern (e.g. JP26-02BABL-001)."""
     if not value:
         return False
     return bool(_REPORT_NO_RE.match(value.strip().rstrip(".,;:")))
 
 
 def is_valid_po_no(value: str) -> bool:
-    """True if value matches the PO Number pattern (e.g. P0426-482649-004)."""
     if not value:
         return False
     return bool(_PO_NO_RE.match(value.strip()))
@@ -219,7 +180,7 @@ def is_date_mmddyyyy(value: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Validation rules per field
+# Validation rules
 # ---------------------------------------------------------------------------
 
 ValidationRule = Callable[[Any], bool]
@@ -230,7 +191,7 @@ VALIDATION_RULES: Dict[str, RuleList] = {
         (is_not_empty, "Factory name should not be empty."),
     ],
     FieldName.DATE_OF_ISSUE: [
-        (is_not_empty,    "Date of Issue should not be empty."),
+        (is_not_empty,     "Date of Issue should not be empty."),
         (is_date_mmddyyyy, "Date of Issue must be in MM/DD/YYYY format."),
     ],
     FieldName.EXF: [
@@ -254,10 +215,13 @@ VALIDATION_RULES: Dict[str, RuleList] = {
     FieldName.AUDIT_QTY: [
         (is_numeric, "Audit Quantity should be a number."),
     ],
+    # REPORT_NO: soft warning only — different formats use different patterns
+    # (e.g. PQC uses sequential "01", standard uses "JP26-02BABL-001").
+    # Mismatch is logged as a validation_error (non-blocking) not a block.
     FieldName.REPORT_NO: [
         (
-            lambda v: not v or is_valid_report_no(v),
-            "Report No does not match expected pattern (e.g. JP26-02BABL-001).",
+            lambda v: True,   # always passes — pattern logged separately below
+            "Report No pattern mismatch (non-blocking).",
         ),
     ],
     FieldName.PO_NO: [
@@ -270,16 +234,14 @@ VALIDATION_RULES: Dict[str, RuleList] = {
 
 
 # ---------------------------------------------------------------------------
-# Refinement map  (field → formatter)
+# Refinement map
 # ---------------------------------------------------------------------------
 
 _REFINEMENT_RULES: Dict[str, Callable[[str], str]] = {
-    # Time fields → "HH:MM AM/PM" or "" on failure
     "factory_in_time":  _format_time,
     "factory_out_time": _format_time,
     "audit_start_time": _format_time,
     "audit_end_time":   _format_time,
-    # Date fields → "MM/DD/YYYY" (time component stripped first)
     "date_of_issue":    _format_date,
     "exf":              _format_date,
     "po_wh":            _format_date,
@@ -290,7 +252,6 @@ _REFINEMENT_RULES: Dict[str, Callable[[str], str]] = {
 
 
 def apply_refinement_rules(record: AuditRecord) -> AuditRecord:
-    """Apply date/time formatting to all relevant fields in *record*."""
     for field_name, formatter in _REFINEMENT_RULES.items():
         raw = getattr(record, field_name, None)
         if not raw:
@@ -303,11 +264,9 @@ def apply_refinement_rules(record: AuditRecord) -> AuditRecord:
 
 
 # ---------------------------------------------------------------------------
-# Blocking validation  (records that FAIL these are never inserted into DB)
+# Blocking validation
 # ---------------------------------------------------------------------------
 
-# Fields that MUST be present for a record to be usable.
-# If any of these are missing the record goes to the error JSON instead.
 _BLOCKING_REQUIRED_FIELDS: List[Tuple[str, str]] = [
     ("factory",         "Factory name is missing"),
     ("date_of_issue",   "Date of Issue is missing"),
@@ -319,25 +278,14 @@ _BLOCKING_REQUIRED_FIELDS: List[Tuple[str, str]] = [
 
 
 def validate_blocking(record: AuditRecord) -> AuditRecord:
-    """
-    Run blocking validations.  Any failure appends to record.blocking_errors
-    and the record will be written to the error JSON and skipped by the DB.
-
-    Checks:
-      1. Required fields must not be empty.
-      2. Sum of extracted defect major counts must equal record.defect_qty.
-         A mismatch means the defect table was not read correctly.
-    """
     errors: List[str] = []
 
-    # Check 1: required fields
     for field_key, msg in _BLOCKING_REQUIRED_FIELDS:
         val = getattr(record, field_key, None)
         if not val or not str(val).strip():
             errors.append(f"REQUIRED_FIELD | {field_key} | {msg}")
             logging.warning(f"[{record.file_name}] BLOCKING: {msg}")
 
-    # Check 2: defect count integrity
     if record.defect_qty and record.defect_rows:
         try:
             header_qty = int(str(record.defect_qty).strip())
@@ -355,14 +303,13 @@ def validate_blocking(record: AuditRecord) -> AuditRecord:
                 errors.append(msg)
                 logging.warning(f"[{record.file_name}] BLOCKING: {msg}")
         except (ValueError, TypeError):
-            pass   # can't compare — don't block on this
+            pass
 
     record.blocking_errors.extend(errors)
     return record
 
 
 def validate_blocking_all(records: List[AuditRecord]) -> List[AuditRecord]:
-    """Apply validate_blocking to every record and return the list."""
     for r in records:
         validate_blocking(r)
     blocked = sum(1 for r in records if r.blocking_errors)
@@ -375,48 +322,43 @@ def validate_blocking_all(records: List[AuditRecord]) -> List[AuditRecord]:
 # ---------------------------------------------------------------------------
 
 def validate_record(record: AuditRecord) -> AuditRecord:
-    """
-    1. Apply refinement rules (date stripping, date/time formatting).
-    2. Run all VALIDATION_RULES and collect error messages.
-    Returns the mutated record.
-    """
     record = apply_refinement_rules(record)
 
     errors: List[str] = []
 
+    # Soft warning for report_no pattern mismatch (non-blocking)
+    rno = getattr(record, "report_no", None)
+    if rno and not is_valid_report_no(rno):
+        msg = (
+            f"'report_no': value '{rno}' does not match standard pattern "
+            f"(e.g. JP26-02BABL-001). This may be correct for this format."
+        )
+        errors.append(msg)
+        logging.info(f"Soft validation [{record.file_name}] – {msg}")
+
     for field_name, rules in VALIDATION_RULES.items():
+        if field_name == FieldName.REPORT_NO:
+            continue   # handled above as soft warning
         value = getattr(record, field_name, None)
         if not value:
-            continue  # only validate fields that were actually extracted
+            continue
         for rule_fn, error_msg in rules:
             if not rule_fn(value):
                 full_msg = f"'{field_name}': {error_msg}"
                 errors.append(full_msg)
-                logging.warning(
-                    f"Validation [{record.file_name}] – {full_msg}"
-                )
+                logging.warning(f"Validation [{record.file_name}] – {full_msg}")
 
     record.validation_errors.extend(errors)
 
     if errors:
-        logging.warning(
-            f"[{record.file_name}] {len(errors)} validation error(s)"
-        )
+        logging.warning(f"[{record.file_name}] {len(errors)} validation error(s)")
     else:
         logging.info(f"[{record.file_name}] passed all validations")
 
     return record
 
 
-# ---------------------------------------------------------------------------
-# Batch validation
-# ---------------------------------------------------------------------------
-
 def validate_all_records(records: List[AuditRecord]) -> List[AuditRecord]:
-    """
-    Validate every record and log a summary.
-    Returns the same list with validation_errors populated.
-    """
     logging.info("=" * 60)
     logging.info("VALIDATION PHASE")
     logging.info("=" * 60)

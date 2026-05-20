@@ -128,6 +128,7 @@ class LabelSynonym(str, Enum):
     REPORT_NO            = "report no"
     REPORT_NUMBER        = "report number"
     INSPECTION_REPORT_NO = "inspection report no"
+    # Local_Sample_Code    = "local sample code"
 
     # Item Name
     ITEM_NAME   = "item name"
