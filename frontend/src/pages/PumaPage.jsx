@@ -28,7 +28,7 @@ export default function PumaPage() {
         addLog({ level: "info", message: "Fetching batch list…" });
         try {
           const data = await fetchBatches({ _t: Date.now() });
-          const filtered = filterByUser(data);
+          const filtered = filterByUser(data, user);
           setOutput("batch-list", filtered, "All Batches", { action: "view" });
           addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
         } catch (e) {
@@ -42,7 +42,7 @@ export default function PumaPage() {
         addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
-          const filtered = filterByUser(data);
+          const filtered = filterByUser(data, user);
           setOutput("report-list", filtered, "All Reports", { action: "view" });
           addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {
@@ -60,7 +60,7 @@ export default function PumaPage() {
          addLog({ level: "info", message: "Fetching batch list…" });
          try {
            const data = await fetchBatches();
-           const filtered = filterByUser(data);
+           const filtered = filterByUser(data, user);
            setOutput("batch-list", filtered, `Batches — ${ep.label}`, { action: ep.action });
            addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} batches` });
          } catch (e) {
@@ -79,7 +79,7 @@ export default function PumaPage() {
         addLog({ level: "info", message: "Fetching reports…" });
         try {
           const data = await fetchReports();
-          const filtered = filterByUser(data);
+          const filtered = filterByUser(data, user);
           setOutput("report-list", filtered, `Reports — ${ep.label}`, { action: ep.action });
           addLog({ level: "success", message: `Loaded ${(filtered.results || filtered).length} reports` });
         } catch (e) {

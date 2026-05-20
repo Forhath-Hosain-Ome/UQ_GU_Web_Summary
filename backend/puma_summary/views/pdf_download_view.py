@@ -31,13 +31,12 @@ class ReportPDFDownloadView(APIView):
     def get(self, request, pk):
         from services.file_manager.build_renamed_pdf_name import build_renamed_pdf_name
 
+        user = request.user
         try:
-            report = (
-                InspectionReport.objects
-                .select_related("batch")
-                .prefetch_related("po_numbers")
-                .get(pk=pk)
-            )
+            qs = InspectionReport.objects.select_related("batch").prefetch_related("po_numbers")
+            if not user.is_staff:
+                qs = qs.filter(created_by=user)
+            report = qs.get(pk=pk)
         except InspectionReport.DoesNotExist:
             return Response({"detail": "Report not found."}, status=status.HTTP_404_NOT_FOUND)
 

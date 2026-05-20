@@ -26,15 +26,23 @@ logger = logging.getLogger(__name__)
 class BatchRetryView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _get_batch(pk, user):
+        qs = InspectionBatch.objects.prefetch_related("batch_failed_pdfs")
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        try:
+            return qs.get(pk=pk)
+        except InspectionBatch.DoesNotExist:
+            return Response(
+                {"detail": "Batch not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
     def post(self, request, pk):
-        batch = self._get_batch(pk)
+        batch = self._get_batch(pk, request.user)
         if isinstance(batch, Response):
             return batch
-
-        serializer = BatchRetrySerializer(
-            data=request.data,
-            context={"batch": batch},
-        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

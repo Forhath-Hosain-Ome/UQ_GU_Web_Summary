@@ -41,7 +41,7 @@ USER appuser
 # Dev: manage.py runserver | Prod: gunicorn (overridden in compose)
 CMD ["gunicorn", "summary_backend.wsgi:application", \
      "--bind", "0.0.0.0:8000", \
-     "--workers", "4", \
+     "--workers", "5", \
      "--timeout", "120"]
 # Default to development server, can be overridden in docker-compose
 # CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

@@ -1,32 +1,51 @@
+"""
+-----------------------
+One row per successfully extracted Excel audit file.
+
+Key changes from old model
+---------------------------
+- batch FK gives access to pair → buyer, factory, report_type.
+- date_of_issue is always set from batch.inspection_date (user input),
+  never extracted from the Excel file.
+- factory / client are still stored as plain text for display and
+  cross-checking against the registered pair names.
+"""
+
 from django.db import models
-from django.contrib.auth.models import User
 from shared.models import BaseModel
 from .upload_batch import UploadBatch
 
 
 class AuditReport(BaseModel):
-    """
-    One row per successfully extracted Excel audit file.
-    Stores all fields from AuditRecord in a fully relational Django model.
-    Lookup fields (factory, client, style_no, po_no, country) are stored
-    as plain text — they are the "dimension" values used for filtering.
-    """
+    """One extracted Excel audit file linked to its upload batch."""
 
     batch = models.ForeignKey(
-        UploadBatch, on_delete=models.CASCADE, related_name="reports",
-    )
-
-    created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="audit_reports",
+        UploadBatch,
+        on_delete=models.CASCADE,
+        related_name="reports",
     )
 
     # Source file
     file_name = models.CharField(max_length=512, db_index=True)
 
+    # ── Cross-check fields (extracted, compared against pair registration) ────
+    # These are extracted from the Excel and compared against batch.pair.
+    # A mismatch produces a validation_warning, not a blocking error.
+    factory_extracted = models.CharField(
+        max_length=255, blank=True,
+        help_text="Factory name as extracted from Excel (for cross-check).",
+    )
+    client_extracted = models.CharField(
+        max_length=255, blank=True,
+        help_text="Client/buyer name as extracted from Excel (for cross-check).",
+    )
+
     # ── Identity / header ─────────────────────────────────────────────────────
+    # factory / client stored for display — sourced from pair at save time
     factory         = models.CharField(max_length=255, blank=True, db_index=True)
     client          = models.CharField(max_length=255, blank=True, db_index=True)
+
+    # date_of_issue is ALWAYS set from batch.inspection_date
     date_of_issue   = models.DateField(null=True, blank=True, db_index=True)
     inspection_type = models.CharField(max_length=100, blank=True)
     report_no       = models.CharField(max_length=100, blank=True)
@@ -48,7 +67,7 @@ class AuditReport(BaseModel):
     audit_result = models.CharField(max_length=20, blank=True, default="-")
 
     # ── Quantity fields ────────────────────────────────────────────────────────
-    po_qty      = models.CharField(max_length=50, blank=True)   # raw string e.g. "1200 PCS"
+    po_qty      = models.CharField(max_length=50, blank=True)
     po_qty_pcs  = models.PositiveIntegerField(default=0)
     po_qty_pack = models.PositiveIntegerField(default=0)
     po_qty_set  = models.PositiveIntegerField(default=0)
@@ -81,23 +100,36 @@ class AuditReport(BaseModel):
 
     # ── Validation ─────────────────────────────────────────────────────────────
     has_validation_errors = models.BooleanField(default=False)
-    validation_errors     = models.TextField(blank=True)   # comma-joined
-    blocking_errors       = models.TextField(blank=True)   # comma-joined
+    validation_errors     = models.TextField(blank=True)
+    blocking_errors       = models.TextField(blank=True)
+
+    # Cross-check warning: factory/client in Excel ≠ registered pair names
+    cross_check_warnings  = models.TextField(blank=True)
 
     # ── DO plan (JSON) ─────────────────────────────────────────────────────────
-    # Stored as JSON text — preserves the list-of-dicts structure from AuditRecord
     do_orders_json = models.TextField(blank=True, default="[]")
 
     class Meta:
         ordering = ["-date_of_issue", "factory", "style_no"]
         verbose_name = "Audit Report"
         verbose_name_plural = "Audit Reports"
-        indexes = [
-            models.Index(fields=["factory", "date_of_issue"]),
-            models.Index(fields=["client", "date_of_issue"]),
-            models.Index(fields=["style_no", "date_of_issue"]),
-            models.Index(fields=["po_no"]),
-        ]
 
-    def __str__(self):
-        return f"{self.factory} | {self.style_no} | {self.date_of_issue}"
+    def __str__(self) -> str:
+        return (
+            f"{self.factory} | {self.style_no} | {self.date_of_issue} "
+            f"| {self.inspection_type}"
+        )
+
+    # ── Convenience accessors via batch.pair ──────────────────────────────────
+
+    @property
+    def pair(self):
+        return self.batch.pair
+
+    @property
+    def report_type(self) -> str:
+        return self.batch.pair.report_type
+
+    @property
+    def template_file(self) -> str:
+        return self.batch.pair.template_file

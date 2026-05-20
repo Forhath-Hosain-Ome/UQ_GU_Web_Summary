@@ -21,12 +21,15 @@ class ReportListView(generics.ListAPIView):
     serializer_class   = InspectionReportListSerializer
 
     def get_queryset(self):
+        user = self.request.user
         qs = (
             InspectionReport.objects
             .select_related("batch")
             .prefetch_related("po_numbers")
-            .order_by("-inspection_date", "style")
         )
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        qs = qs.order_by("-inspection_date", "style")
         p = self.request.query_params
 
         if p.get("style"):

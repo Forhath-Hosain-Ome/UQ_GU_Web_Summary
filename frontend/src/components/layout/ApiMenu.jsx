@@ -46,10 +46,10 @@ export default function ApiMenu({ onSelect, activeId, sections = SECTIONS }) {
     >
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", color: "var(--color-muted)" }}>
-          PUMA SUMMARY · API
+          API
         </span>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-accent)", marginTop: "3px" }}>
-          /api/
+          /Path/
         </div>
       </div>
 

@@ -40,10 +40,11 @@ class BatchDetailView(generics.RetrieveAPIView):
     serializer_class   = InspectionBatchSerializer
 
     def get_queryset(self):
-        return (
-            InspectionBatch.objects
-            .prefetch_related("reports__po_numbers", "batch_failed_pdfs")
-        )
+        qs = InspectionBatch.objects.prefetch_related("reports__po_numbers", "batch_failed_pdfs")
+        user = self.request.user
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
+        return qs
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
