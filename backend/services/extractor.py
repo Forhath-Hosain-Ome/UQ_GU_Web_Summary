@@ -98,12 +98,19 @@ def extract_single_pdf(pdf_path: Path) -> dict:
     text = extract_text_from_pdf(pdf_path)
 
     inspection_date = _parse_inspection_date(text)
+    logger.debug("Extracted inspection_date: %s", inspection_date)
     po_qty, actual_qty, inspected_qty = _parse_quantities(text)
+    logger.debug("Extracted po_qty: %s, actual_qty: %s, inspected_qty: %s", po_qty, actual_qty, inspected_qty)
     major_defect, minor_defect = _parse_defects(text)
+    logger.debug("Extracted major_defect: %s, minor_defect: %s", major_defect, minor_defect)
     style, description = _parse_style_description(text)
+    logger.debug("Extracted style: %s, description: %s", style, description)
     factory_code, factory_name = _parse_factory(text)
+    logger.debug("Extracted factory_code: %s, factory_name: %s", factory_code, factory_name)
     pos = _parse_pos(text)
+    logger.debug("Extracted po_numbers: %s", pos)
     final_customer = _parse_final_customer(text)
+    logger.debug("Extracted final_customer: %s", final_customer)
 
     return {
         "pdf_filename": pdf_path.name,

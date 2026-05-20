@@ -1,3 +1,4 @@
+import AuditOutput from "../audit/AuditOutput";
 import { useOutputStore } from "../../store/outputStore";
 import BatchOutput from "../batch/BatchOutput";
 import ReportOutput from "../reports/ReportOutput";
@@ -117,30 +118,23 @@ export default function OutputPanel() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-        {isLoading ? (
-          <LoadingState />
-        ) : !output ? (
-          <EmptyState />
-        ) : output.type === "batch" || output.type === "batch-list" || output.type === "logs" || output.type === "batch-progress" ? (
-          <BatchOutput output={output} />
-        ) : output.type === "report" || output.type === "report-list" ? (
-          <ReportOutput output={output} />
-        ) : output.type === "top5-upload" || output.type === "top5-job-list" || output.type === "top5-job" ? (
-          <TopFiveOutput output={output} />
-        ) : (
-          <pre
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-              color: "var(--color-text)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              lineHeight: 1.7,
-            }}
-          >
-            {JSON.stringify(output.data, null, 2)}
-          </pre>
-        )}
+         {isLoading ? (
+            <LoadingState />
+          ) : !output ? (
+            <EmptyState />
+          ) : output.source === "audit" ? (
+            <AuditOutput output={output} />
+          ) : output.type === "batch" || output.type === "batch-list" || output.type === "logs" || output.type === "batch-progress" ? (
+            <BatchOutput output={output} />
+          ) : output.type === "report" || output.type === "report-list" ? (
+            <ReportOutput output={output} />
+          ) : output.type === "top5-upload" || output.type === "top5-job-list" || output.type === "top5-job" ? (
+            <TopFiveOutput output={output} />
+          ) : (
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:"12px",color:"var(--color-text)",whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.7}}>
+              {JSON.stringify(output.data, null, 2)}
+            </pre>
+          )}
       </div>
     </main>
   );
