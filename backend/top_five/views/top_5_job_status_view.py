@@ -47,14 +47,8 @@ class Top5JobStatusView(APIView):
                 "detail": f"Job #{pk} not found or access denied."
             }, status=404)
 
-        serializer = Top5JobResponseSerializer({
-            "id":         job.pk,
-            "status":     job.status,
-            "input_file": job.input_file,
-            "error":      job.error or None,
-            "created_at": job.created_at,
-            "updated_at": job.updated_at,
-        })
+        # Serialize job using the model instance directly (not a dict)
+        serializer = Top5JobResponseSerializer(job)
         
         logger.debug("top5 job status — job_id=%s status=%s user=%s", 
                     pk, job.status, request.user)

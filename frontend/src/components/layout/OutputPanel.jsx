@@ -1,6 +1,8 @@
+import AuditOutput from "../audit/AuditOutput";
 import { useOutputStore } from "../../store/outputStore";
 import BatchOutput from "../batch/BatchOutput";
 import ReportOutput from "../reports/ReportOutput";
+import TopFiveOutput from "../top_five/TopFiveOutput"; // ← new import
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -11,6 +13,9 @@ function saveBlob(blob, filename) {
 
 export default function OutputPanel() {
   const { output, outputTitle, isLoading, clearOutput } = useOutputStore();
+
+  // Types that support JSON export
+  const exportableTypes = ["batch", "report", "logs", "batch-list", "report-list", "top5-job-list", "top5-job"];
 
   return (
     <main
@@ -55,8 +60,7 @@ export default function OutputPanel() {
 
         {output && (
           <>
-            {/* Export button — only for data outputs, not the upload form */}
-            {["batch", "report", "logs", "batch-list", "report-list"].includes(output?.type) && (
+            {exportableTypes.includes(output?.type) && (
               <button
                 onClick={() => {
                   const blob = new Blob([JSON.stringify(output.data, null, 2)], {
@@ -83,7 +87,6 @@ export default function OutputPanel() {
               </button>
             )}
 
-            {/* Clear cache button */}
             <button
               onClick={clearOutput}
               style={{
@@ -115,28 +118,23 @@ export default function OutputPanel() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-        {isLoading ? (
-          <LoadingState />
-        ) : !output ? (
-          <EmptyState />
-        ) : output.type === "batch" || output.type === "batch-list" || output.type === "logs" || output.type === "batch-progress" ? (
-          <BatchOutput output={output} />
-        ) : output.type === "report" || output.type === "report-list" ? (
-          <ReportOutput output={output} />
-        ) : (
-          <pre
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-              color: "var(--color-text)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              lineHeight: 1.7,
-            }}
-          >
-            {JSON.stringify(output.data, null, 2)}
-          </pre>
-        )}
+         {isLoading ? (
+            <LoadingState />
+          ) : !output ? (
+            <EmptyState />
+          ) : output.source === "audit" ? (
+            <AuditOutput output={output} />
+          ) : output.type === "batch" || output.type === "batch-list" || output.type === "logs" || output.type === "batch-progress" ? (
+            <BatchOutput output={output} />
+          ) : output.type === "report" || output.type === "report-list" ? (
+            <ReportOutput output={output} />
+          ) : output.type === "top5-upload" || output.type === "top5-job-list" || output.type === "top5-job" ? (
+            <TopFiveOutput output={output} />
+          ) : (
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:"12px",color:"var(--color-text)",whiteSpace:"pre-wrap",wordBreak:"break-word",lineHeight:1.7}}>
+              {JSON.stringify(output.data, null, 2)}
+            </pre>
+          )}
       </div>
     </main>
   );

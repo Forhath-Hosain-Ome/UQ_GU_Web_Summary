@@ -25,10 +25,10 @@ class BatchListView(generics.ListAPIView):
     ordering              = ["-created_at"]
 
     def get_queryset(self):
-        qs = (
-            InspectionBatch.objects
-            .prefetch_related("reports", "batch_failed_pdfs")
-        )
+        user = self.request.user
+        qs = InspectionBatch.objects.prefetch_related("reports", "batch_failed_pdfs")
+        if not user.is_staff:
+            qs = qs.filter(created_by=user)
         factory = self.request.query_params.get("factory", "").strip()
         if factory:
             qs = qs.filter(factory_code__icontains=factory)

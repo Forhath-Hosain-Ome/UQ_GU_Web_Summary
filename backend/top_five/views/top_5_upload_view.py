@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from top_five.models import Top5Job
 from top_five.tasks import run_top5_job
-from top_five.serializers import Top5UploadSerializer, Top5UploadResponseSerializer
+from top_five.serializers import Top5UploadSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +63,8 @@ class Top5UploadView(APIView):
                 job.pk, task_result.id, uploaded.name, request.user
             )
 
-            response_serializer = Top5UploadResponseSerializer({
-                "job_id": job.pk,
-                "status": job.status
-            })
-            return Response(response_serializer.data, status=201)
+             # Return plain dict response – avoid serializer misuse that drops fields
+            return Response({"job_id": job.pk, "status": job.status}, status=201)
             
         except Exception as exc:
             logger.exception("✗ top5 upload failed: %s", exc)

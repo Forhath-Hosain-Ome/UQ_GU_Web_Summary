@@ -19,8 +19,8 @@ class CertificateLogListView(generics.ListAPIView):
     serializer_class   = CertificateLogSerializer
 
     def get_queryset(self):
-        return (
-            CertificateLog.objects
-            .filter(report_id=self.kwargs["pk"])
-            .order_by("-generated_at")
-        )
+        qs = CertificateLog.objects.filter(report_id=self.kwargs["pk"]).order_by("-generated_at")
+        user = self.request.user
+        if not user.is_staff:
+            qs = qs.filter(report__created_by=user)
+        return qs

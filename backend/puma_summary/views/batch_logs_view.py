@@ -20,8 +20,12 @@ class BatchLogsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
+        user = request.user
         try:
-            batch = InspectionBatch.objects.prefetch_related("batch_failed_pdfs").get(pk=pk)
+            qs = InspectionBatch.objects.prefetch_related("batch_failed_pdfs")
+            if not user.is_staff:
+                qs = qs.filter(created_by=user)
+            batch = qs.get(pk=pk)
         except InspectionBatch.DoesNotExist:
             return Response({"detail": "Batch not found."}, status=status.HTTP_404_NOT_FOUND)
 
