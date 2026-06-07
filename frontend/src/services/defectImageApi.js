@@ -1,4 +1,11 @@
-import image_api from "../lib/image_api";
+import axios from "axios";
+import { attachInterceptors } from "./apiClient";
+
+const image_api = attachInterceptors(
+  axios.create({
+    baseURL: "/image/",
+  })
+);
 
 const normalizeReport = (report) => ({
   ...report,
