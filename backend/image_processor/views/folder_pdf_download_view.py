@@ -40,9 +40,9 @@ class FolderPDFDownloadView(APIView):
             )
 
         docx_path = os.path.normpath(
-            settings.BASE_DIR / "media" / report.pdf_output_path
+            settings.MEDIA_ROOT / report.pdf_output_path
         )
-        media_root = os.path.normpath(str(settings.BASE_DIR / "media"))
+        media_root = os.path.normpath(str(settings.MEDIA_ROOT))
 
         if not docx_path.startswith(media_root):
             logger.warning(

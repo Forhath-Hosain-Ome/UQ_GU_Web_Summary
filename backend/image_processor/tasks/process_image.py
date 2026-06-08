@@ -361,6 +361,11 @@ def _generate_docx(
                 )
 
             _add_image_paragraph(doc, img_path)
+    output_docx_path = Path(output_docx_path)
+    output_docx_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_docx_path))
+    logger.info("WRITING DOCX TO: %s", output_docx_path.resolve())
+    logger.info("CWD: %s", os.getcwd())
 
     os.makedirs(os.path.dirname(output_docx_path), exist_ok=True)
     doc.save(output_docx_path)
@@ -575,7 +580,7 @@ def process_defect_docx_task(
                 # ── Update report record ──────────────────────────────────
                 rel_path = os.path.relpath(
                     docx_output_path,
-                    str(Path(settings.BASE_DIR) / "media"),
+                    str(settings.MEDIA_ROOT),
                 )
                 report.status          = FolderReport.Status.COMPLETED
                 report.image_count     = len(prepared)

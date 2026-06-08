@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 FACTORY_IN_SYNONYMS: list[str] = [
     "factory in time",
+    "factory in-time",
     "factory in",
     "in time",
     "factory intime",
@@ -42,6 +43,7 @@ FACTORY_IN_SYNONYMS: list[str] = [
 
 FACTORY_OUT_SYNONYMS: list[str] = [
     "factory out time",
+    "factory out-time",
     "factory out",
     "out time",
     "factory outtime",
