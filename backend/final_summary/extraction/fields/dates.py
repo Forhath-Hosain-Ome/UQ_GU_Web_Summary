@@ -38,7 +38,6 @@ from final_summary.extraction.core import (
 
 EXF_SYNONYMS: list[str] = [
     "exf",
-    "exf:",
     "ex factory",
     "ex-factory",
     "ex factory date",
@@ -48,8 +47,6 @@ PO_EDT_SYNONYMS: list[str] = [
     "po edt",
     "p o edt",
     "po e d t",
-    "po estimated delivery",
-    "po delivery date",
     "po. etd",
 ]
 
@@ -58,9 +55,6 @@ PO_WH_SYNONYMS: list[str] = [
     "po wh",
     "powh",
     "po w/h",
-    "warehouse",
-    "po warehouse",
-    "po ship date",
     "po. wh",
 ]
 
@@ -68,8 +62,6 @@ PLAN_EDT_SYNONYMS: list[str] = [
     "plan etd",
     "plan e t d",
     "plan edt",
-    "planned delivery",
-    "plan estimated delivery",
     "plan  etd",
 ]
 
@@ -77,7 +69,6 @@ PLAN_WH_SYNONYMS: list[str] = [
     "plan w h",
     "plan wh",
     "plan w/h",
-    "plan warehouse",
     "plan  wh",
 ]
 

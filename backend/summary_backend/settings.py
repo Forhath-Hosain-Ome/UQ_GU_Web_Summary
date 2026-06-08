@@ -325,27 +325,27 @@ LOGGING = {
 
 PUMA_SETTINGS = {
     "CERTIFICATE_TEMPLATE_PATH": TEMPLATE_ROOT / "CERTIFICATE.docx",
-    "OUTPUT_DIR":        BASE_DIR / "media/output/puma",
-    "RENAMED_PDF_DIR":   BASE_DIR / "media/output/puma/renamed_pdfs",
-    "CERTIFICATE_DIR":   BASE_DIR / "media/output/puma/certificates",
+    "OUTPUT_DIR":        MEDIA_ROOT / "output/puma",
+    "RENAMED_PDF_DIR":   MEDIA_ROOT / "output/puma/renamed_pdfs",
+    "CERTIFICATE_DIR":   MEDIA_ROOT / "output/puma/certificates",
 }
 
 IMAGE_PROCESSOR_SETTINGS = {
     "DEFECT_IMAGE_TEMPLATE_PATH": TEMPLATE_ROOT / "Defec_pictures.docx",
-    "OUTPUT_DIR" :        BASE_DIR / "media/output/defect_image",
-    "DEFECT_PDF" :        BASE_DIR / "media/output/defect_image/renamed_pdfs",
-    "DEFECT_DOCX":        BASE_DIR / "media/output/defect_image/defect_docx",
+    "OUTPUT_DIR" :        MEDIA_ROOT / "output/defect_image",
+    "DEFECT_PDF" :        MEDIA_ROOT / "output/defect_image/renamed_pdfs",
+    "DEFECT_DOCX":        MEDIA_ROOT / "output/defect_image/defect_docx",
 }
 
 TOP_FIVE_SETTINGS = {
     "TOP_FIVE_TEMPLATE_PATH": TEMPLATE_ROOT / "template.xlsx",
-    "OUTPUT_DIR" :        BASE_DIR / "media/output/top_five",
+    "OUTPUT_DIR" :        MEDIA_ROOT / "output/top_five",
 }
 
 # Celery Setup
 
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 

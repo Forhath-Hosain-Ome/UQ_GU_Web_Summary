@@ -325,7 +325,7 @@ def resolve_po_wh_value(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
 
     # Format 2: date split across three cells (MM | DD | YYYY)
     if is_valid_month_or_day(first_val):
-        mm = first_val
+        dd = first_val
 
         second_col = None
         second_val = ""
@@ -337,9 +337,9 @@ def resolve_po_wh_value(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
                 break
 
         if not second_val or not is_valid_month_or_day(second_val):
-            return mm
+            return dd
 
-        dd = second_val
+        mm = second_val
 
         third_val = ""
         for c in range(second_col + 1, min(second_col + 5, grid.ncols)):

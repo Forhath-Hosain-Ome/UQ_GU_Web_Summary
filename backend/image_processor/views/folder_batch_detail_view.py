@@ -20,8 +20,8 @@ def _pdf_exists(report) -> bool:
     if not report.pdf_output_path:
         return False
     # Normalize path to prevent path traversal
-    full = os.path.normpath(settings.BASE_DIR / "media" / report.pdf_output_path)
-    media_root = os.path.normpath(str(settings.BASE_DIR / "media"))
+    full = os.path.normpath(settings.MEDIA_ROOT / report.pdf_output_path)
+    media_root = os.path.normpath(str(settings.MEDIA_ROOT))
     # Ensure the path is within MEDIA_ROOT
     if not full.startswith(media_root):
         logger.warning("Path traversal attempt detected: %s", report.pdf_output_path)
