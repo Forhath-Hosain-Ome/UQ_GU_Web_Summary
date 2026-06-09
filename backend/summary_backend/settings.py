@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import sys
+from celery.schedules import crontab
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Allow importing the top-level workspace `analysis` package from backend code.
 WORKSPACE_ROOT = BASE_DIR.parent
@@ -356,4 +357,12 @@ CELERY_TASK_ROUTES = {
     'image_processor.process_defect_docx':   {'queue': 'celery'},
     'final_summary.process_audit_upload':    {'queue': 'celery'},
     'top_five.run_top5_job':                 {'queue': 'celery'},
+}
+
+CELERY_BEAT_SCHEDULE = {
+    # Runs every day at 02:00 AM server time
+    "cleanup-temp-dirs-daily": {
+        "task":     "image_processor.cleanup_temp_dirs",
+        "schedule": crontab(hour=2, minute=0),
+    },
 }

@@ -64,3 +64,139 @@ html, body, #root {
   animation: shimmer 1.5s infinite;
   border-radius: 4px;
 }
+
+
+
+/* ===== Custom CSS ===== */
+
+/* ===== NAVBAR ===== */
+.header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 32px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
+.logo {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    color: var(--color-accent2);
+    white-space: nowrap;
+}
+
+.custom_button {
+    border: none;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.active {
+    background: var(--color-accent);
+    color: #fff;
+}
+
+.inactive {
+    background: transparent;
+    color: var(--color-muted);
+}
+
+/* ===== Custom CSS ===== */
+
+.mono  {
+  font-family: var(--font-mono)
+};
+
+.body  {
+  font-family: var(--font-body)
+};
+
+.disp  {
+  font-family: var(--font-display)
+};
+
+/* ===== CARD ===== */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 14px 16px;
+}
+
+.card--accent {
+  border-left: 3px solid var(--accent-color);
+}
+
+/* ===== LABEL ===== */
+.label {
+  font-size: 10px;
+  color: var(--color-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+}
+
+/* required asterisk */
+.label__required {
+  color: var(--color-error);
+  margin-left: 2px;
+}
+
+/* ===== SECTION TITLE ===== */
+.section-title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--color-muted);
+  margin-bottom: 10px;
+}
+
+/* GRID WRAPPER */
+.stat-grid {
+  display: grid;
+  gap: 8px;
+}
+
+/* CARD */
+.stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 12px 14px;
+}
+
+/* LABEL */
+.stat-label {
+  font-size: 9px;
+  color: var(--color-muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+}
+
+/* VALUE */
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.stat-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+  transition: 0.15s;
+}

@@ -1,1 +1,2 @@
 from .process_image import process_defect_docx_task as process_folder_task
+from .cleanup_task import cleanup_temp_dirs_task

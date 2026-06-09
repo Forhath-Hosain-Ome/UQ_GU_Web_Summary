@@ -1,13 +1,11 @@
 import { useAuthStore } from "../../store/authStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import './TopNav.css'
 
 const SERVICES = [
   { id: "puma", label: "PUMA SUMMARY", path: "/puma" },
   { id: "defect_image", label: "Defect Image", path: "/image" },
   { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
   { id: "top_five", label: "TOP FIVE", path: "/top-five" },
-  // Future services added here
 ];
 
 export default function TopNav() {
@@ -19,11 +17,11 @@ export default function TopNav() {
     <header className="header" >
       {/* Logo */}
       <div className="logo" >
-        QC<span style={{ color: "var(--color-muted)" }}>/</span>PLATFORM
+        
       </div>
 
       {/* Service tabs */}
-      <nav style={{ display: "flex", gap: "4px", flex: 1 }}>
+      <nav style={{ display: "flex", gap: "4px", flex: 1, justifyContent: "center", alignItems: "center" }}>
         {SERVICES.map((s) => {
           const active = location.pathname.startsWith(s.path);
           return (
