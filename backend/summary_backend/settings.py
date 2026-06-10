@@ -352,9 +352,9 @@ CELERY_TASK_SERIALIZER = 'json'
 
 CELERY_TASK_DEFAULT_QUEUE = 'celery'
 CELERY_TASK_ROUTES = {
-    'puma_summary.process_inspection_batch': {'queue': 'celery'},
-    'puma_summary.retry_failed_pdfs':        {'queue': 'celery'},
-    'image_processor.process_defect_docx':   {'queue': 'celery'},
+    'puma_summary.process_inspection_batch': {'queue': 'puma_summary'},
+    'puma_summary.retry_failed_pdfs':        {'queue': 'puma_summary'},
+    'image_processor.process_defect_docx':   {'queue': 'image_processor'},
     'final_summary.process_audit_upload':    {'queue': 'celery'},
     'top_five.run_top5_job':                 {'queue': 'celery'},
 }
