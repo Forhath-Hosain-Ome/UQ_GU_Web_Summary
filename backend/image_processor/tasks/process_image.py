@@ -562,7 +562,7 @@ def process_defect_docx_task(
                 # ── Generate DOCX ─────────────────────────────────────────
                 safe_folder = folder_name.replace(" ", "_")
                 safe_date   = (date or "no-date").replace(" ", "_")
-                docx_filename = f"{label_type}_{safe_folder}_dated at{safe_date}.docx"
+                docx_filename = f"{label_type}_{safe_folder}_dated on {safe_date}.docx"
                 docx_output_path = str(folder_output_dir / docx_filename)
 
                 _generate_docx(

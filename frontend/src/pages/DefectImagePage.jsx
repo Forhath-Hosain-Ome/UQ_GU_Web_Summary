@@ -115,7 +115,7 @@ export default function DefectImagePage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <TopNav />
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", paddingTop: "52px" }}>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <LogsPanel />
         <ApiMenu onSelect={handleSelect} activeId={activeId} sections={IMAGE_SECTIONS} />
         <OutputPanel />

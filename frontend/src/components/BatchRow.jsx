@@ -1,8 +1,9 @@
 import { mono, body, STATUS_COLOR } from "../constants"
 import { Label, SectionTitle } from "../primitives/Labels";
-import { PrimaryBtn, IconBtn } from "../primitives/Buttons";
+import { Btn, Section, IconBtn2, PrimaryBtn, IconBtn } from "../primitives/index";
+import DownloadDropdown from "./DownloadDropdown";
 
-function AuditBatchRow({ batch, action, onAction }) {
+export default function AuditBatchRow({ batch, action, onAction }) {
   const color    = STATUS_COLOR[batch.status] || "var(--color-muted)";
   const total     = batch.total_files     ?? 0;
   const processed = batch.processed_files ?? 0;
@@ -79,4 +80,63 @@ function AuditBatchRow({ batch, action, onAction }) {
   );
 }
 
-export default AuditBatchRow;
+
+export function BatchRow({ batch, onAction }) {
+  const color    = STATUS_COLOR[batch.status] || "var(--color-muted)";
+  const canRetry = batch.status === "PARTIAL" || batch.status === "FAILED";
+  const hasExcel = !!batch.excel_report_path || batch.excel_available;
+  const reports  = batch.reports || [];
+
+  // Support both puma (total_pdfs) and image (total_folders) batch types
+  const total     = batch.total_folders ?? batch.total_pdfs ?? 0;
+  const processed = batch.processed_folders ?? batch.processed_pdfs ?? 0;
+  
+  return (
+    <div
+      onClick={() => onAction("view", batch.id)}
+      style={{
+        display: "grid", gridTemplateColumns: "48px 1fr 80px 90px 100px 96px",
+        gap: "8px", padding: "10px 14px",
+        background: "var(--color-surface)", border: "1px solid var(--color-border)",
+        borderLeft: `3px solid ${color}`, borderRadius: "7px",
+        alignItems: "center", transition: "border-color 0.15s", cursor: "pointer",
+      }}
+    >
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)" }}>
+        #{batch.id}
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {batch.factory_code || "—"}
+        </div>
+        {batch.created_by && (
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+            by {batch.created_by.username}
+          </div>
+        )}
+      </div>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color, background: `${color}18`, padding: "2px 7px", borderRadius: "3px", whiteSpace: "nowrap", display: "inline-block" }}>
+        {batch.status}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-muted)" }}>
+        {processed}/{total}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: batch.success_rate === 100 ? "var(--color-success)" : "var(--color-warning)" }}>
+        {batch.success_rate}%
+      </span>
+      <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
+        <IconBtn2 title={canRetry ? "Retry failed" : "No failures to retry"} disabled={!canRetry} color="var(--color-warning)" onClick={() => onAction("retry", batch.id)}>
+          ↺
+        </IconBtn2>
+        <IconBtn2 title="View logs" onClick={() => onAction("logs", batch.id)}>∷</IconBtn2>
+        <DownloadDropdown
+          batchId={batch.id}
+          hasExcel={hasExcel}
+          reports={reports}
+          reportCount={batch.report_count || reports.length || 0}
+          onAction={(key) => onAction(key, batch.id, { reports, hasExcel })}
+        />
+      </div>
+    </div>
+  );
+}

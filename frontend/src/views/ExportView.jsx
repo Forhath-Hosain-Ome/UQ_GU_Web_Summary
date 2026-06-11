@@ -1,7 +1,7 @@
 import { useOutputStore } from "../store/outputStore";
 import { useState } from "react";
 import { disp, body, mono, fieldStyle, saveBlob } from "../constants"
-import { Label, SectionTitle, PrimaryBtn } from "../primitives/index";
+import { Label, SectionTitle, PrimaryBtn, Card } from "../primitives/index";
 import { downloadSummary } from "../services/finalSummaryApi";
 
 

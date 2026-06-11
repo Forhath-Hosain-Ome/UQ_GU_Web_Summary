@@ -2,7 +2,7 @@ import { STATUS_COLOR } from "../constants"
 import { Label, SectionTitle, PrimaryBtn, IconBtn } from "../primitives";
 import { useState } from "react";
 import { saveBlob } from "../constants"
-import { downloadErrorJson } from "../../services/finalSummaryApi";
+import { downloadErrorJson } from "../services/finalSummaryApi";
 import { ErrBtn } from "../primitives";
 
 function DownloadErrBtn({ batchId, addLog }) {
