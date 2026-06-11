@@ -7,10 +7,12 @@ import {
 } from "../services/pumaApi";
 
 import { saveBlob } from "../utils/fileUtils";
-import { Btn, Section, Stat } from "../primitives/index";
+import { Btn, Section, Stat, StatGrid } from "../primitives/index";
 import UploadForm from "./UploadForm";
 import BatchList from "./BatchList";
 import { STATUS_COLOR } from "../constants"
+import ReportCertBtn from "./ReportCertBtn";
+
 
 
 export default function BatchDetail({ data, source = "puma" }) {

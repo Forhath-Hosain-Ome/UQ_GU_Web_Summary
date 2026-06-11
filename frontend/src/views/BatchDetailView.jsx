@@ -1,5 +1,5 @@
 import { disp, mono, STATUS_COLOR } from "../constants"
-import { Label, SectionTitle, PrimaryBtn } from "../primitives/index";
+import { Label, SectionTitle, PrimaryBtn, StatGrid } from "../primitives/index";
 
 function AuditBatchDetail({ data }) {
   const color     = STATUS_COLOR[data?.status] || "var(--color-muted)";

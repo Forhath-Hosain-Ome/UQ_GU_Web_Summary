@@ -42,7 +42,7 @@ class Woven78Extractor(BaseExtractor):
            If still empty after extraction, leave as "-" (the default).
         """
         # Ensure report_no is kept as-is even if it's just "01"
-        if not record.carton and record.do_note:
+        if not record.carton and not record.do_note:
             m = re.search(
                 r"our inspection carton\s+no[:\s]+(.+)",
                 record.do_note, re.IGNORECASE

@@ -91,9 +91,9 @@ class AuditRecord:
     # Identity / header
     factory:         str = ""
     client:          str = ""
-    date_of_issue:   str = ""   # always injected from batch — never extracted
+    date_of_issue:   str = ""   
     inspection_type: str = ""
-    audit_report:    str = ""   # Bug #3 restored: separate audit-report-number field
+    audit_report:    str = ""   
     item_name:       str = ""
     style_no:        str = ""
     po_no:           str = ""

@@ -321,7 +321,16 @@ def resolve_po_wh_value(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
 
     # Format 1: full date already in one cell
     if is_date_format(first_val):
-        return first_val
+        # return first_val
+        # Excel stores dates as DD/MM/YYYY in this format.
+        # Reorder to MM/DD/YYYY so to_display_date() parses correctly.
+        parts = re.split(r"[-/]", first_val)
+        if len(parts) == 3:
+            dd, mm, yyyy = parts[0], parts[1], parts[2]
+            # Confirm it really is DD/MM/YYYY by checking day > 12 OR just always reorder
+            # (safe because we know the column order is always D|M|Y)
+            return f"{mm}/{dd}/{yyyy}"
+        return first_val  # unexpected format, pass through
 
     # Format 2: date split across three cells (MM | DD | YYYY)
     if is_valid_month_or_day(first_val):
@@ -352,6 +361,3 @@ def resolve_po_wh_value(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
             return f"{mm}/{dd}"
 
         return f"{mm}/{dd}/{third_val}"
-
-    # Format 3: non-date value — return as-is
-    return first_val
