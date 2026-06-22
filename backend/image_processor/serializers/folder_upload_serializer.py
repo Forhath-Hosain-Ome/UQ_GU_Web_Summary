@@ -27,6 +27,7 @@ class FolderUploadSerializer(serializers.Serializer):
         files = data.get('files', [])
         paths = data.get('paths', []) or []
         paths = [p.replace('\\', '/') for p in paths]
+        is_renamed_file = data.get('is_renamed_file', [])
         errors = []
 
         if files and not paths:
@@ -42,7 +43,10 @@ class FolderUploadSerializer(serializers.Serializer):
                 errors.append(f"{path}: Only image files (JPG, JPEG, PNG, BMP, GIF, TIFF, WEBP) are accepted.")
             if f.size > MAX_FILE_SIZE:
                 errors.append(f"{path}: Exceeds the 50 MB limit.")
-            if ".." in path or path.startswith("/"):
+            # ── Path traversal check (segment-aware, not substring) ──────────
+            normalized = os.path.normpath(path).replace("\\", "/")
+            segments = normalized.split("/")
+            if ".." in segments or path.startswith("/") or normalized.startswith("/"):
                 errors.append(f"{path}: Invalid directory path.")
 
         if errors:
@@ -53,22 +57,23 @@ class FolderUploadSerializer(serializers.Serializer):
         # Grouped by their parent folder so each folder starts at 01.
         folder_counters = defaultdict(int)
         normalized_paths = []
+        if not is_renamed_file:
+            for path in paths:
+                parts = path.split('/')
+                if len(parts) > 1:
+                    # has a folder prefix — keep the folder, renumber the file
+                    folder = '/'.join(parts[:-1])
+                    ext = os.path.splitext(parts[-1])[1].lower() or '.jpg'
+                else:
+                    folder = ''
+                    ext = os.path.splitext(parts[-1])[1].lower() or '.jpg'
 
-        for path in paths:
-            parts = path.split('/')
-            if len(parts) > 1:
-                # has a folder prefix — keep the folder, renumber the file
-                folder = '/'.join(parts[:-1])
-                ext = os.path.splitext(parts[-1])[1].lower() or '.jpg'
-            else:
-                folder = ''
-                ext = os.path.splitext(parts[-1])[1].lower() or '.jpg'
+                folder_counters[folder] += 1
+                seq = folder_counters[folder]
+                new_filename = f"{seq:02d}{ext}"
+                new_path = f"{folder}/{new_filename}" if folder else new_filename
+                normalized_paths.append(new_path)
 
-            folder_counters[folder] += 1
-            seq = folder_counters[folder]
-            new_filename = f"{seq:02d}{ext}"
-            new_path = f"{folder}/{new_filename}" if folder else new_filename
-            normalized_paths.append(new_path)
-
-        data['paths'] = normalized_paths
+            data['paths'] = normalized_paths
+            return data
         return data
