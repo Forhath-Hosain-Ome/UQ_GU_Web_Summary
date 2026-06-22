@@ -15,6 +15,7 @@ from django.db import transaction
 from image_processor.serializers import FolderUploadSerializer
 from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
+from utils import normalize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +66,30 @@ class FolderUploadView(APIView):
 
         try:
             # ── Save files with normalized names, preserving folder structure ──
-            for file_obj, relative_path in zip(validated_files, normalized_paths):
-                # Strip leading slashes/dots — already clean from serializer
-                safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-                full_path = os.path.join(temp_dir, safe_path)
+            # for file_obj, relative_path in zip(validated_files, normalized_paths):
+            #     # Strip leading slashes/dots — already clean from serializer
+            #     safe_path = os.path.normpath(relative_path).lstrip(os.sep)
+            #     full_path = os.path.join(temp_dir, safe_path)
 
+            #     os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+            #     with open(full_path, "wb+") as dest:
+            #         for chunk in file_obj.chunks():
+            #             dest.write(chunk)
+            for file_obj, relative_path in zip(files, normalized_paths):
+
+                # normalize filename BEFORE saving
+                file_obj.name = normalize_filename(file_obj.name)
+
+                safe_path = os.path.normpath(relative_path).lstrip(os.sep)
+
+                # replace original filename inside path if needed
+                safe_path = os.path.join(
+                    os.path.dirname(safe_path),
+                    file_obj.name
+                )
+
+                full_path = os.path.join(temp_dir, safe_path)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
                 with open(full_path, "wb+") as dest:
