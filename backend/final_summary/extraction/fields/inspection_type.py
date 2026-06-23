@@ -88,9 +88,12 @@ def extract_from_filename(
         return ""
 
     name = filename.lower().strip()
+    name = re.sub(r"\s+", " ", name.strip())
+    name = name.upper()
+    name = name.replace(" - ", "-").replace(" ", "-")
 
     # ── RE-FINAL ──────────────────────────────────────────────────────────
-    if re.search(AUDIT_TYPE_PATTERNS["RE-FINAL"], name):
+    if re.search(AUDIT_TYPE_PATTERNS["RE-FINAL"], name) or re.search(AUDIT_TYPE_PATTERNS["RE-AUDIT"], name):
         pct       = _safe_pct(audit_qty, ship_qty)
         nth_match = re.search(r"\b(\d+(?:st|nd|rd|th))\s*time\b", name)
         if nth_match:
@@ -104,7 +107,7 @@ def extract_from_filename(
         return f"FINAL {pct}%" if pct else "FINAL"
 
     # ── Other known types ─────────────────────────────────────────────────
-    for audit_type in ("INLINE", "SAMPLE", "CMF"):
+    for audit_type in ("INLINE", "SAMPLE", "CMF", "RANDOM"):
         if re.search(AUDIT_TYPE_PATTERNS[audit_type], name):
             return audit_type
 

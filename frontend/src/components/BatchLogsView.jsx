@@ -1,3 +1,4 @@
+
 function BatchLogsView({ data }) {
   return (
     <div className="fade-up" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

@@ -4,6 +4,7 @@ from datetime import timedelta
 import os
 import sys
 from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Allow importing the top-level workspace `analysis` package from backend code.
 WORKSPACE_ROOT = BASE_DIR.parent
@@ -225,13 +226,15 @@ TEMPLATE_URL = "/media/templates/"
 TEMPLATE_ROOT = MEDIA_ROOT / "templates"
 
 # Log files
-
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-
 class AppUserDateHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self._cache = set()
+
     """Routes logs to logs/<app>/<username>/<date>.log"""
     def emit(self, record):
         try:
@@ -277,16 +280,16 @@ LOGGING = {
         'file_app': {
             'level': 'DEBUG',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOG_DIR, 'app.log'),
-            'maxBytes': 10485760,  # 10 MB
+            'filename': str(LOG_DIR / 'app.log'),
+            'maxBytes': 10485760,
             'backupCount': 5,
             'formatter': 'extraction',
         },
         'file_final_summary': {
             'level': 'DEBUG',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOG_DIR, 'final_summary', 'extraction.log'),
-            'maxBytes': 10485760,  # 10 MB
+            'filename': str(LOG_DIR / 'final_summary' / 'extraction.log'),
+            'maxBytes': 10485760,
             'backupCount': 5,
             'formatter': 'extraction',
         },

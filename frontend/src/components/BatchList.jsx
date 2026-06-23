@@ -15,16 +15,14 @@ export default function BatchList({ data, onAction }) {
         Batches <span style={{ color: "var(--color-muted)", fontSize: "12px", fontWeight: 400 }}>({sorted.length})</span>
       </h2>
 
-      <div style={{
-        display: "grid", gridTemplateColumns: "48px 1fr 80px 90px 100px 96px",
-        gap: "8px", padding: "4px 14px",
-        fontFamily: "var(--font-mono)", fontSize: "9px", letterSpacing: "0.08em", color: "var(--color-muted)",
+      <div className="batch-row py-2.5 px-3.5 gap-2 text-[9px]"  style={{
+        fontFamily: "var(--font-mono)", letterSpacing: "0.08em", color: "var(--color-muted)",
       }}>
-        <span>#ID</span><span>FACTORY / USER</span><span>STATUS</span>
+        <span>Created Date</span><span>FACTORY / USER</span><span>STATUS</span>
         <span>FOLDERS</span><span>SUCCESS</span><span style={{ textAlign: "right" }}>ACTIONS</span>
       </div>
 
-      {sorted.map((b) => <BatchRow key={b.id} batch={b} onAction={onAction} />)}
+      {sorted.map((b) => <BatchRow key={b.created_at} batch={b} onAction={onAction} />)}
 
       {sorted.length === 0 && (
         <div style={{ fontFamily: "var(--font-body)", fontSize: "13px", color: "var(--color-muted)", padding: "32px 0", textAlign: "center" }}>

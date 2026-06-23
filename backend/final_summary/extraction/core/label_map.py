@@ -156,6 +156,7 @@ STYLE_COUNTRY_MAP: dict = {
 
 AUDIT_TYPE_PATTERNS: dict = {
     "RE-FINAL": r"re[-\s]?final",
+    "RE-AUDIT": r"re[-\s]?audit",
     "FINAL":    r"\bfinal\b",
     "INLINE":   r"in[-\s]?line",
     "SAMPLE":   r"sample",

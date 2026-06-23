@@ -13,3 +13,5 @@ urlpatterns = [
     path("final-summary/", include("final_summary.urls", namespace="final_summary")),
     path("top-five/", include("top_five.urls", namespace="top_five")),
 ]
+
+#192.168.0.1:8080/puma/batches/upload/

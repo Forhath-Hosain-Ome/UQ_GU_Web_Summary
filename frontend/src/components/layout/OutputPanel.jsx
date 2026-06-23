@@ -167,7 +167,7 @@ function EmptyState() {
       >
         ◎
       </div>
-      <span
+      <span className="text-[11px] tracking-[0.08em]"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: "11px",
@@ -183,12 +183,12 @@ function EmptyState() {
 
 function LoadingState() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+    <div className="flex flex-col gap-2.5" >
       {[100, 80, 90, 60].map((w, i) => (
         <div
           key={i}
-          className="skeleton"
-          style={{ height: "18px", width: `${w}%`, borderRadius: "4px" }}
+          className="skeleton rounded-sm h-4.5 "
+          style={{ width: `${w}%` }}
         />
       ))}
     </div>

@@ -86,24 +86,18 @@ export function BatchRow({ batch, onAction }) {
   const canRetry = batch.status === "PARTIAL" || batch.status === "FAILED";
   const hasExcel = !!batch.excel_report_path || batch.excel_available;
   const reports  = batch.reports || [];
-
   // Support both puma (total_pdfs) and image (total_folders) batch types
   const total     = batch.total_folders ?? batch.total_pdfs ?? 0;
   const processed = batch.processed_folders ?? batch.processed_pdfs ?? 0;
   
   return (
-    <div
+    <div className="items-center gap-2 px-3.5 py-2.5 cursor-pointer border rounded-[7px] transition-colors duration-150 batch-row"
       onClick={() => onAction("view", batch.id)}
-      style={{
-        display: "grid", gridTemplateColumns: "48px 1fr 80px 90px 100px 96px",
-        gap: "8px", padding: "10px 14px",
-        background: "var(--color-surface)", border: "1px solid var(--color-border)",
-        borderLeft: `3px solid ${color}`, borderRadius: "7px",
-        alignItems: "center", transition: "border-color 0.15s", cursor: "pointer",
-      }}
+      style={{ borderLeft: `3px solid ${color}` }}
     >
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-accent2)" }}>
-        #{batch.id}
+      <span className="text-[11px]"
+      style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent2)" }}>
+        {batch.created_at}
       </span>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

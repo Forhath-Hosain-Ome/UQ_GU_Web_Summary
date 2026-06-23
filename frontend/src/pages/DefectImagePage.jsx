@@ -8,27 +8,6 @@ import { useAuthStore } from "../store/authStore";
 import { fetchBatches, fetchReports } from "../services/defectImageApi";
 import filterByUser from "../utils/FilterByUser"
 
-const IMAGE_SECTIONS = [
-  {
-    label: "BATCHES",
-    endpoints: [
-      { id: "upload", label: "Upload Folders", method: "POST", path: "/folder/upload/", icon: "⬆" },
-      { id: "batch-list", label: "List Batches", method: "GET", path: "/folder/batches/", icon: "≡", action: "list", listType: "batch" },
-      { id: "batch-detail", label: "Batch Detail", method: "GET", path: "/folder/batches/{id}/", icon: "◎", action: "view" },
-      { id: "batch-logs", label: "Batch Logs", method: "GET", path: "/folder/batches/{id}/logs/", icon: "∷", action: "logs" },
-    ],
-  },
-  {
-    label: "REPORTS",
-    endpoints: [
-      { id: "report-list", label: "List Reports", method: "GET", path: "/folder/reports/", icon: "≡", action: "list", listType: "report" },
-      { id: "report-detail", label: "Report Detail", method: "GET", path: "/folder/reports/{id}/", icon: "◎", action: "view" },
-      { id: "report-pdf", label: "Download PDF", method: "GET", path: "/folder/reports/{id}/pdf/", icon: "⬇", action: "pdf" },
-      { id: "report-docx", label: "Download DOCX", method: "GET", path: "/folder/reports/{id}/docx/", icon: "⬇", action: "docx" },
-    ],
-  },
-];
-
 export default function DefectImagePage() {
   const { user } = useAuthStore();
   const { setOutput, setLoading, addLog, clearOutput } = useOutputStore();
@@ -113,11 +92,11 @@ export default function DefectImagePage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div className="flex flex-col h-screen">
       <TopNav />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <LogsPanel />
-        <ApiMenu onSelect={handleSelect} activeId={activeId} sections={IMAGE_SECTIONS} />
+        <ApiMenu onSelect={handleSelect} activeId={activeId} />
         <OutputPanel />
       </div>
     </div>
