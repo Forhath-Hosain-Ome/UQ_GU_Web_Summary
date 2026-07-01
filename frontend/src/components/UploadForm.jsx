@@ -13,9 +13,14 @@ import { Btn, Section } from "../primitives/index";
 import { pickBtnStyle, inputStyle } from "../constants"
 
 export default function UploadForm({ initData = {}, source = "puma" }) {
+  const getDefaultDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  };
   const { addLog, setOutput, setLoading } = useOutputStore();
   const [files, setFiles]       = useState([]);
-  const [date, setDate]         = useState(initData.date || new Date().toISOString().slice(0, 10));
+  const [date, setDate]         = useState(initData.date || getDefaultDate());
   const [style, setStyle]       = useState(initData.style || "");
   const [isRenamedFile, setIsRenamedFile] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -60,7 +65,6 @@ export default function UploadForm({ initData = {}, source = "puma" }) {
   }, [isImageUpload]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
-
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();

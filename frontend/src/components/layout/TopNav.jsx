@@ -6,6 +6,7 @@ const SERVICES = [
   { id: "defect_image", label: "Defect Image", path: "/image" },
   { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
   { id: "top_five", label: "TOP FIVE", path: "/top-five" },
+  { id: "mail_download", label: "MAIL DOWNLOAD", path: "/mail-fetch" },
 ];
 
 function TopNav() {
@@ -14,7 +15,7 @@ function TopNav() {
   const location  = useLocation();
 
   return (
-    <header className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-950" >
+    <header className="bg-linear-to-br from-slate-900 via-indigo-900 to-slate-950" >
       <nav className="sticky top-4 z-50">
         <div className="mx-auto border border-white/20 bg-white/10 backdrop-blur-xl backdrop-saturate-150 shadow-lg ">
           <div className="flex items-center justify-between px-6 py-4">

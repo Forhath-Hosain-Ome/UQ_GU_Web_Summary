@@ -1,11 +1,19 @@
-import logging
+import os
 from pathlib import Path
 from datetime import timedelta
-import os
 import sys
 from celery.schedules import crontab
+from dotenv import load_dotenv
+
+import logging
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+FIELD_ENCRYPTION_KEY = os.environ.get('FIELD_ENCRYPTION_KEY', '')
+
 # Allow importing the top-level workspace `analysis` package from backend code.
 WORKSPACE_ROOT = BASE_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
@@ -15,9 +23,7 @@ WORKSPACE_ROOT = BASE_DIR.parent
 if str(WORKSPACE_ROOT) not in sys.path:
     sys.path.insert(0, str(WORKSPACE_ROOT))
 
-
-
-SECRET_KEY = 'django-insecure-bybxt97-yxn5dgy73aljwqk$u41f(af%eiwcx!bj9#$tp2aj%n'
+SECRET_KEY = os.environ.get('SECRET_KEY', '')
 
 
 DEBUG = True
@@ -46,6 +52,8 @@ INSTALLED_APPS = [
     'image_processor.apps.ImageProcessorConfig',
     'final_summary.apps.FinalSummaryConfig',
     'top_five.apps.TopFiveConfig',
+    'mail_download.apps.MailDownloadConfig',
+    'encrypted_model_fields',
 ]
 
 MIDDLEWARE = [
@@ -114,7 +122,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', 6379)))],
+            "hosts": [(os.getenv('REDIS_HOST', 'REDIS_HOST_DEV'), int(os.getenv('REDIS_PORT', 'REDIS_PORT_DEV')))],
             # Optional tuning
             "capacity":  1500,   # max messages queued per channel
             "expiry":    60,     # seconds before unread messages are dropped
@@ -177,11 +185,11 @@ WSGI_APPLICATION = 'summary_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'summary_db'),
-        'USER': os.getenv('POSTGRES_USER', 'postgres'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
-        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        'NAME': os.getenv('POSTGRES_DB', 'POSTGRES_DB_DEV'),
+        'USER': os.getenv('POSTGRES_USER', 'POSTGRES_USER_DEV'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'POSTGRES_PASSWORD_DEV'),
+        'HOST': os.getenv('POSTGRES_HOST', 'POSTGRES_HOST_DEV'),
+        'PORT': os.getenv('POSTGRES_PORT', 'POSTGRES_PORT_DEV'),
     }
 }
 
@@ -349,7 +357,7 @@ TOP_FIVE_SETTINGS = {
 # Celery Setup
 
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'CELERY_BROKER_URL_DEV')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 

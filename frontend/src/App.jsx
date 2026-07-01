@@ -6,6 +6,7 @@ import PumaPage  from "./pages/PumaPage";
 import AuditSummaryPage from "./pages/AuditSummaryPage";
 import DefectImagePage from "./pages/DefectImagePage";
 import Top5Page from "./pages/TopFivePage";
+import DashboardLayout from "./components/layout/DashboardLayout";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -21,11 +22,15 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" 
+          <Route path="/login" element={ <LoginPage /> }/>
+
+          <Route
             element={
-              <LoginPage />
-            } 
-          />
+              <RequireAuth>
+                <DashboardLayout />
+              </RequireAuth>
+            }
+          ></Route>
 
           <Route path="/puma"
             element={

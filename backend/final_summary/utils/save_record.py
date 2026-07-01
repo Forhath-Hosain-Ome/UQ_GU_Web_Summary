@@ -1,4 +1,4 @@
-from utils import _to_date
+
 from final_summary.models import UploadBatch, AuditReport, DefectEntry
 import json
 import logging
@@ -10,6 +10,7 @@ def _save_record(batch: UploadBatch, record) -> bool:
     Persist one AuditRecord dataclass to the Django ORM.
     Returns True on success, False if skipped or failed.
     """
+    from utils import _to_date
     # Skip exact duplicates within this batch
     if AuditReport.objects.filter(
         batch=batch, file_name=record.file_name

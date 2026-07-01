@@ -295,7 +295,7 @@ def resolve_po_or_report_number(
 # PO W/H special handler  (date may be split across 3 cells: MM | DD | YYYY)
 # ---------------------------------------------------------------------------
 
-def resolve_po_wh_value(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
+def date_table(grid: CellGrid, label_pos: Tuple[int, int]) -> str:
     """
     Extract a date value that may be split across up to 3 adjacent cells.
 

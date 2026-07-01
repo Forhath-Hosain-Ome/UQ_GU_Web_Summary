@@ -19,7 +19,7 @@ from .sheet_reader import read_sheet, read_first_sheet, read_all_sheets, get_she
 # ── Proximity engine ──────────────────────────────────────────────────────────
 from .proximity import (
     resolve_value,
-    resolve_po_wh_value,
+    date_table,
     resolve_po_or_report_number,
     find_inline_value,
     is_int,
@@ -51,7 +51,6 @@ from .label_map import (
     FieldName,
     DirectionRule,
     DOFieldName,
-    STYLE_COUNTRY_MAP,
     AUDIT_TYPE_PATTERNS,
     NUMERIC_FIELD_NAMES,
     DO_FILL_DOWN_FIELDS,
@@ -73,6 +72,6 @@ __all__ = [
     "calc_defect_percentage",
     # Enums & maps
     "FieldName", "DirectionRule", "DOFieldName",
-    "STYLE_COUNTRY_MAP", "AUDIT_TYPE_PATTERNS",
+    "AUDIT_TYPE_PATTERNS",
     "NUMERIC_FIELD_NAMES", "DO_FILL_DOWN_FIELDS",
 ]

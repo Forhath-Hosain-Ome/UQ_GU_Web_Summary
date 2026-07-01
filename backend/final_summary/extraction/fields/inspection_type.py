@@ -20,7 +20,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Optional
-
+from utils.normalize_filename import normalize_filename
 from final_summary.extraction.core import (
     CellGrid,
     DirectionRule,
@@ -84,9 +84,10 @@ def extract_from_filename(
     -------
     Resolved inspection type string, or "" if unrecognised.
     """
+    logging.warning("filename=%s", filename)
     if not filename:
         return ""
-
+    name = normalize_filename(filename)
     name = filename.lower().strip()
     name = re.sub(r"\s+", " ", name.strip())
     name = name.upper()
@@ -110,7 +111,12 @@ def extract_from_filename(
     for audit_type in ("INLINE", "SAMPLE", "CMF", "RANDOM"):
         if re.search(AUDIT_TYPE_PATTERNS[audit_type], name):
             return audit_type
-
+    logging.warning("normalized=%s", name)
+    logging.warning("pattern=%s", AUDIT_TYPE_PATTERNS["FINAL"])
+    logging.warning(
+        "match=%s",
+        bool(re.search(AUDIT_TYPE_PATTERNS["FINAL"], name, re.I))
+    )
     logging.debug(f"inspection_type: no keyword match in '{filename}'")
     return ""
 

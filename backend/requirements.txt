@@ -55,6 +55,7 @@ pillow==12.1.1
 prompt_toolkit==3.0.52
 proto-plus==1.27.2
 protobuf==6.33.6
+psycopg2-binary==2.9.10
 py-ubjson==0.16.1
 pyasn1==0.6.3
 pyasn1_modules==0.4.2
@@ -62,7 +63,6 @@ pycparser==3.0
 PyJWT==2.12.1
 pyOpenSSL==26.0.0
 pyparsing==3.3.2
-psycopg2-binary==2.9.10
 pypdf==6.9.2
 pypdfium2==5.6.0
 python-crontab==3.3.0

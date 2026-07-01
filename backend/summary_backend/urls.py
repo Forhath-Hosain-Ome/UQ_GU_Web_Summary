@@ -12,6 +12,7 @@ urlpatterns = [
     path("image/", include("image_processor.urls", namespace="image_processor")),
     path("final-summary/", include("final_summary.urls", namespace="final_summary")),
     path("top-five/", include("top_five.urls", namespace="top_five")),
+    path("mail-fetch/", include("mail_download.urls", namespace="mail_download")),
 ]
 
 #192.168.0.1:8080/puma/batches/upload/
