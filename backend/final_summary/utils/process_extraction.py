@@ -1,7 +1,7 @@
 import logging
 logger = logging.getLogger(__name__)
 
-def process_extraction(self ,grid ,path ,record ,_func ,name ,report_type=None):
+def process_extraction(grid ,path ,record ,_func ,name ,report_type=None):
     try:
         if report_type is not None:
             data = _func(grid, path, report_type)

@@ -34,7 +34,7 @@ function DownloadDropdown({ batchId, hasExcel, reports = [], reportCount = 0, on
           borderRadius: "8px", minWidth: "190px", zIndex: 50,
           boxShadow: "0 8px 24px rgba(0,0,0,0.3)", overflow: "hidden",
         }}>
-          <div style={{ padding: "6px 12px 4px", fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-muted)", letterSpacing: "0.08em", borderBottom: "1px solid var(--color-border)" }}>
+          <div className="desc" style={{ padding: "6px 12px 4px", letterSpacing: "0.08em", borderBottom: "1px solid var(--color-border)" }}>
             DOWNLOAD
           </div>
           {items.map((item) => (
@@ -47,8 +47,8 @@ function DownloadDropdown({ batchId, hasExcel, reports = [], reportCount = 0, on
             >
               <span style={{ fontSize: "14px" }}>{item.icon}</span>
               <div>
-                <div style={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--color-text)" }}>{item.label}</div>
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "9px", color: "var(--color-muted)" }}>{item.desc}</div>
+                <div className="label">{item.label}</div>
+                <div className="desc">{item.desc}</div>
               </div>
             </button>
           ))}

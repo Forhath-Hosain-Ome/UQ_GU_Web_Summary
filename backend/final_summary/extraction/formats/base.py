@@ -69,6 +69,7 @@ from final_summary.extraction.fields import (
     extract_do_table,
     extract_type_from_filename,
     get_country,
+    extract_item_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,10 @@ class BaseExtractor:
         except Exception as exc:
             record.blocking_errors.append(f"SHEET_READ_ERROR | Cannot read sheet '{sheet_name}': {exc}")
             return record
+        
+        # ── Step 2: save buyer and factory from the pair ────────────────────────────────────
+        record.factory = pair.factory.name.strip()
+        record.client = pair.buyer.name.strip()
 
         # ── Step 2: single-value fields ────────────────────────────────────
         # BUG FIX #1: pass `path` as the second positional argument so that
@@ -142,8 +147,9 @@ class BaseExtractor:
             except Exception as exc:
                 logger.error(f"[{path.name}] Field '{field_name}' extraction EXCEPTION: {exc}")
 
-        # ── Step 3: style_no  ──────────────────────────────────────────────
-        record.style_no = process_extraction(grid, path, record, self._extract_style, 'Style')
+        # ── Step 3: style_no and item name  ──────────────────────────────────────────────
+        record.style_no = process_extraction(grid, path, record, self._extract_style, name='Style')
+        record.item_name = process_extraction(grid, path, record, self._extract_item, name='Style')
 
         # ── Step 4: times ──────────────────────────────────────────────────
         process_extraction(grid, path, record, self._extract_times, 'Time')
@@ -216,6 +222,11 @@ class BaseExtractor:
 
         # ── Inspection type fallback from file name ────────────────────────
         if not record.inspection_type:
+            if not record.audit_qty and not record.ship_qty:
+                need_quantities = not any([
+                    record.po_qty, record.ship_qty, record.audit_qty,
+                    record.defect_qty,
+                ])
             record.inspection_type = extract_type_from_filename(
                 path.stem,
                 audit_qty=record.audit_qty,
@@ -226,11 +237,20 @@ class BaseExtractor:
             )
 
         # ── Step 11: format-specific post-processing ───────────────────────
-        record = self.post_process(record, grid, path, pair)
+        # Capture raw sheet text for factory/client BEFORE post_process
+        # overwrites record.factory/client with the registered pair's
+        # canonical names — that overwrite is what post_process does by
+        # design, but it means the comparison in step 12 has to happen
+        # against this raw snapshot, not against record.factory/client.
+        raw_factory, raw_client = self._find_raw_identity(grid)
 
         # ── Step 12: cross-check vs pair registration ──────────────────────
+        # NOTE: _crosscheck mutates record.cross_check_warnings in place and
+        # must not be assigned back over `record` — a stub implementation
+        # that forgot to `return record` previously replaced the fully
+        # extracted record with None here, silently failing every upload.
         if pair:
-            record = self._crosscheck(record, pair)
+            self._crosscheck(record, pair, raw_factory, raw_client)
 
         return record
 
@@ -379,6 +399,43 @@ class BaseExtractor:
                     record.do_set_col_size,
                 ])
 
+    def _find_raw_identity(self, grid: CellGrid) -> tuple[str, str]:
+        """
+        Best-effort, non-blocking read of whatever factory/buyer text is
+        printed on the sheet itself — used only for _crosscheck. Returns
+        ("", "") if the sheet doesn't expose these as labeled cells; that
+        is expected for some templates and is not an error.
+
+        Uses an EXACT normalised match rather than CellGrid's usual
+        find_label_positions() (which also matches by prefix) — a prefix
+        match on "factory" would also catch "Factory In Time" / "Factory
+        Out Time", which exist on every template, and grab a time value
+        for comparison instead of a factory name. That would make this
+        check fire a false mismatch on nearly every file.
+        """
+        from final_summary.extraction.core import (
+            find_inline_value, resolve_value, normalize_text, DirectionRule,
+        )
+
+        factory_synonyms = ["factory name", "factory"]
+        client_synonyms  = ["buyer", "client", "brand"]
+
+        def _search(synonyms: list[str]) -> str:
+            normalised_synonyms = {normalize_text(s) for s in synonyms}
+            for row, col, cell_text in grid.iter_cells():
+                if normalize_text(cell_text) not in normalised_synonyms:
+                    continue
+                for syn in synonyms:
+                    value = find_inline_value(syn, cell_text)
+                    if value:
+                        return value
+                value = resolve_value(grid, (row, col), DirectionRule.RIGHT)
+                if value:
+                    return value
+            return ""
+
+        return _search(factory_synonyms), _search(client_synonyms)
+
     def _read_sheet(self, path: Path, sheet_name: str):
         """Load the sheet DataFrame. Override to apply skiprows etc."""
         return read_sheet(path, sheet_name=sheet_name)
@@ -392,6 +449,9 @@ class BaseExtractor:
 
     def _extract_style(self, grid: CellGrid, path: Path) -> str:
         return extract_style_no(grid, path)
+    
+    def _extract_item(self, grid: CellGrid, path: Path) -> str:
+        return extract_item_name(grid, path)
 
     def _extract_times(self, grid: CellGrid, path: Path) -> dict:
         return extract_times(grid, path)
@@ -441,10 +501,7 @@ class BaseExtractor:
         Override in subclasses to apply layout-specific corrections.
         Default implementation applies the remarks fallback parser.
         """        
-        record.country = self.get_country(record.style_no)
-        record.factory = pair.factory.name.strip()
-        record.client = pair.buyer.name.strip()
-
+        
         self._parse_remarks_fallback(record)
 
         return record
@@ -489,14 +546,6 @@ class BaseExtractor:
             if m:
                 record.audit_qty = m.group(1)
 
-        if not record.report_no:
-            m = re.search(r"RE-FINAL AUDIT\s*-\s*(\d+)", text)
-            if m:
-                record.report_no = m.group(1)
-            else:
-                m = re.search(r"AUDIT\s*-\s*(\d+)", record.file_name.upper())
-                if m:
-                    record.report_no = m.group(1)
 
         if not record.person:
             m = re.search(r"(\d+)\s*PERSON", text)
@@ -507,9 +556,24 @@ class BaseExtractor:
     # Cross-check
     # ------------------------------------------------------------------
 
-    def _crosscheck(self, record: AuditRecord, pair) -> AuditRecord:
+    def _crosscheck(self, record: AuditRecord, pair, raw_factory: str = "", raw_client: str = "") -> None:
         """
         Compare extracted factory/client names against the registered pair.
         Mismatches are non-blocking — they go to cross_check_warnings.
         """
-        pass
+        def _norm(s: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+        if raw_factory and pair.factory and pair.factory.name:
+            if _norm(raw_factory) not in _norm(pair.factory.name) and _norm(pair.factory.name) not in _norm(raw_factory):
+                record.cross_check_warnings.append(
+                    f"FACTORY_MISMATCH | sheet says '{raw_factory}' but pair is "
+                    f"registered as '{pair.factory.name}'"
+                )
+
+        if raw_client and pair.buyer and pair.buyer.name:
+            if _norm(raw_client) not in _norm(pair.buyer.name) and _norm(pair.buyer.name) not in _norm(raw_client):
+                record.cross_check_warnings.append(
+                    f"CLIENT_MISMATCH | sheet says '{raw_client}' but pair is "
+                    f"registered as '{pair.buyer.name}'"
+                )

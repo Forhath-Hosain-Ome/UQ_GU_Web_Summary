@@ -4,11 +4,11 @@ from mail_download.models import DownloadHistory
 @admin.register(DownloadHistory)
 class DownloadHistoryAdmin(admin.ModelAdmin):
     """Read-only audit trail. No create/edit/delete via admin."""
-    list_display = ("filename", "account", "user", "status", "downloaded_at")
+    list_display = ("filename", "account", "created_by", "status", "created_at")
     list_filter = ("status", "account")
-    search_fields = ("filename", "message_id", "user__username", "user__email")
-    date_hierarchy = "downloaded_at"
-    readonly_fields = ("user", "account", "message_id", "attachment_id", "filename", "status", "error", "downloaded_at")
+    search_fields = ("filename", "message_id", "created_by__username", "created_by__email")
+    date_hierarchy = "created_at"
+    readonly_fields = ("created_by", "account", "message_id", "attachment_id", "filename", "status", "error", "created_at")
 
     def has_add_permission(self, request):
         return False

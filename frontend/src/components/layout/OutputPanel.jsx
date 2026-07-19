@@ -18,18 +18,13 @@ export default function OutputPanel() {
   const exportableTypes = ["batch", "report", "logs", "batch-list", "report-list", "top5-job-list", "top5-job"];
 
   return (
-    <main
+    <main className="flex flex-1 flex-col w-min-0 overflow-hidden"
       style={{
-        flex: 1,
         background: "var(--color-bg)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        minWidth: 0,
       }}
     >
       {/* Output toolbar */}
-      <div
+      <div 
         style={{
           height: "44px",
           background: "var(--color-surface)",

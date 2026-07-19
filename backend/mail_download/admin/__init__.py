@@ -17,3 +17,5 @@ Design notes:
   admin -- if you need to purge old rows, do it with a management command
   / data retention job, not by clicking around in admin.
 """
+from .gmail_account_admin import GmailAccountAdmin
+from .download_history_admin import DownloadHistoryAdmin

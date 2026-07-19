@@ -30,6 +30,7 @@ class DownloadHistory(BaseModel):
     error = models.TextField(blank=True, default="")
 
     class Meta:
+        app_label = "mail_download"
         indexes = [
             models.Index(fields=["account", "filename", "status"]),
             models.Index(fields=["created_by", "-created_at"]),

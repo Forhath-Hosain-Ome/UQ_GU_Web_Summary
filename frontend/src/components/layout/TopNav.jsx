@@ -6,7 +6,7 @@ const SERVICES = [
   { id: "defect_image", label: "Defect Image", path: "/image" },
   { id: "audit", label: "AUDIT SUMMARY", path: "/audit" },
   { id: "top_five", label: "TOP FIVE", path: "/top-five" },
-  { id: "mail_download", label: "MAIL DOWNLOAD", path: "/mail-fetch" },
+  { id: "mail-fetch", label: "MAIL DOWNLOAD", path: "/mail-fetch" },
 ];
 
 function TopNav() {

@@ -30,6 +30,13 @@ function ExportView({ data }) {
       const name = cd.match(/filename[^;=\n]*=['"]?([^'"\n]+)['"]?/)?.[1] || "audit_summary.xlsx";
       saveBlob(blob, name);
       addLog({ level: "success", message: `Downloaded: ${name}` });
+      const skipped = headers["x-skipped-stages"];
+      if (skipped) {
+        addLog({
+          level: "warning",
+          message: `Note: no template configured yet for stage(s) [${skipped}] — those records were left out of this file.`,
+        });
+      }
     } catch (e) {
       const err = e.response?.data;
       // err may be a Blob (responseType mismatch) or JSON
@@ -46,7 +53,7 @@ function ExportView({ data }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "22px", maxWidth: "660px" }}>
+    <div className="flex flex-col gap-5.5 w-max-[660px]">
       <div>
         <h2 style={{ ...disp, fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "var(--color-text)" }}>
           Download Summary
@@ -56,7 +63,7 @@ function ExportView({ data }) {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+      <div className="grid grid-cols-1 gap-[3.5]" >
         <div>
           <Label required>FACTORY</Label>
           <input type="text" value={form.factory} placeholder="Type or select…"

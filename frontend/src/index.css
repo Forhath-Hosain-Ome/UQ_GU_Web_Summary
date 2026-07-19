@@ -184,3 +184,32 @@ html, body, #root {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
+
+.label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.desc {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--color-muted);
+}
+
+.ghostBtn {
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  padding: 6px 16px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.batch-font {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-muted);
+}

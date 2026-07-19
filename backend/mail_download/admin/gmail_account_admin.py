@@ -7,18 +7,18 @@ from mail_download.models import GmailAccount
 
 @admin.register(GmailAccount)
 class GmailAccountAdmin(admin.ModelAdmin):
-    list_display = ("label_or_email", "is_active", "token_status", "connected_by",
+    list_display = ("label_or_email", "is_active", "token_status", "created_by",
                      "last_used_at", "created_at")
     list_filter = ("is_active",)
     search_fields = ("email_address", "label")
-    readonly_fields = ("email_address", "scopes", "token_expiry", "connected_by",
+    readonly_fields = ("email_address", "scopes", "token_expiry", "created_by",
                         "created_at", "last_used_at", "token_status")
 
     # Token fields are intentionally absent from `fields`/`fieldsets` --
     # never rendered in any form, encrypted or not. Re-authorizing a
     # mailbox happens through the OAuth start/callback views, never here.
     fields = ("label", "email_address", "is_active", "token_status",
-              "scopes", "token_expiry", "connected_by", "created_at", "last_used_at")
+              "scopes", "token_expiry", "created_by", "created_at", "last_used_at")
 
     def label_or_email(self, obj):
         return obj.label or obj.email_address

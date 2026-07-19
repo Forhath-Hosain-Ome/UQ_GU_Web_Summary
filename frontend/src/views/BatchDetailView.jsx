@@ -73,9 +73,9 @@ function AuditBatchDetail({ data }) {
                 <span style={{ ...mono, fontSize: "11px", color: "var(--color-accent2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.factory || r.file_name}
                 </span>
-                <span style={{ ...mono, fontSize: "10px", color: "var(--color-muted)" }}>{r.style_no}</span>
-                <span style={{ ...mono, fontSize: "10px", color: "var(--color-muted)" }}>{r.inspection_type}</span>
-                <span style={{ ...mono, fontSize: "10px", color: "var(--color-muted)" }}>{r.date_of_issue}</span>
+                <span className="batch-font">{r.style_no}</span>
+                <span className="batch-font">{r.inspection_type}</span>
+                <span className="batch-font">{r.date_of_issue}</span>
                 <span style={{
                   ...mono, fontSize: "9px",
                   color: r.audit_result === "PASS" ? "var(--color-success)" : r.audit_result === "FAIL" ? "var(--color-error)" : "var(--color-muted)",

@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { ghostBtn } from "../constants"
-import { Btn, Section } from "../primitives/index";
 
 
 function RetryModal({ failedPdfs, onConfirm, onCancel }) {
@@ -43,13 +41,13 @@ function RetryModal({ failedPdfs, onConfirm, onCancel }) {
             );
           })}
         </div>
-        <div style={{ display: "flex", gap: "8px", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-muted)" }}>
+        <div className="flex flex-between flex-center gap-2" >
+          <span className="desc font-[10px]" >
             {selected.length} of {allUnretried.length} selected
           </span>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={onCancel} style={ghostBtn}>Cancel</button>
-            <button disabled={!selected.length} onClick={() => onConfirm(selected)} style={{ ...ghostBtn, background: selected.length ? "var(--color-accent)" : "var(--color-border)", color: selected.length ? "#fff" : "var(--color-muted)", borderColor: selected.length ? "var(--color-accent)" : "var(--color-border)", cursor: selected.length ? "pointer" : "not-allowed" }}>
+          <div className="flex gap-2" >
+            <button className="ghostBtn" onClick={onCancel}>Cancel</button>
+            <button disabled={!selected.length} onClick={() => onConfirm(selected)} className="ghostBtn" style={{ background: selected.length ? "var(--color-accent)" : "var(--color-border)", color: selected.length ? "#fff" : "var(--color-muted)", borderColor: selected.length ? "var(--color-accent)" : "var(--color-border)", cursor: selected.length ? "pointer" : "not-allowed" }}>
               Retry {selected.length ? `(${selected.length})` : ""}
             </button>
           </div>

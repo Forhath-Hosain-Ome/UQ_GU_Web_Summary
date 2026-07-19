@@ -121,30 +121,19 @@ const MAIL_FETCH_SECTIONS = [
 ];
 
 export const MENU_GROUPS = [
-  {
-    title: "PUMA",
-    sections: PUMA_SECTION,
-  },
-  {
-    title: "DEFECT_IMAGE",
-    sections: IMAGE_SECTIONS,
-  },
-  {
-    title: "AUDIT SUMMARY",
-    sections: AUDIT_SECTIONS,
-  },
-  {
-    title: "Top-5",
-    sections: TOP_FIVE_SECTIONS,
-  },
+  { title: "PUMA", sections: PUMA_SECTION, },
+  { title: "DEFECT_IMAGE", sections: IMAGE_SECTIONS, },
+  { title: "AUDIT SUMMARY", sections: AUDIT_SECTIONS, },
+  { title: "Top-5", sections: TOP_FIVE_SECTIONS, },
+  { title: "MAIL FETCH",   sections: MAIL_FETCH_SECTIONS },
 ];
 
 export const MENU_BY_SERVICE = {
   puma: PUMA_SECTION,
   image: IMAGE_SECTIONS,
   audit: AUDIT_SECTIONS,
-  mail_fetch_section: MAIL_FETCH_SECTIONS,
-  manual: TOP_FIVE_SECTIONS,
+  "mail-fetch": MAIL_FETCH_SECTIONS,
+  "top-five": TOP_FIVE_SECTIONS,
 };
 
 export const SERVICE_BY_PATH = {

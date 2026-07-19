@@ -30,7 +30,7 @@ from final_summary.extraction.core import (
     to_display_date as _tdtl,
     date_table as _dtbl,
 )
-from backend.final_summary.utils import shipment_and_time
+from final_summary.utils import shipment_and_time
 # ---------------------------------------------------------------------------
 # Per-field synonym lists
 # ---------------------------------------------------------------------------

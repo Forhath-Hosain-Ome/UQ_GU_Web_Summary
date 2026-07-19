@@ -24,6 +24,7 @@ class GmailAccount(BaseModel):
     last_used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        app_label = "mail_download"
         indexes = [models.Index(fields=["is_active"])]
 
     def __str__(self):
