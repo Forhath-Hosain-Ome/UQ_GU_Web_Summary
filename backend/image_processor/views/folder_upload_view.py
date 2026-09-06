@@ -2,10 +2,10 @@
 import logging
 import os
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from django.conf import settings
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +16,10 @@ from image_processor.serializers import FolderUploadSerializer
 from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
 from utils import normalize_filename
+from image_processor.upload_paths import (
+    contained_upload_path,
+    validate_upload_destinations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,43 +60,36 @@ class FolderUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use NORMALIZED paths from validated_data (01.jpg, 02.jpg …)
         validated_files = serializer.validated_data["files"]
         normalized_paths = serializer.validated_data["paths"]
+        style = serializer.validated_data["style"]
+
+        # Preserve the existing saved filenames and logical folder identities.
+        # Plan flat uploads in their final folder, eliminating unsafe renames.
+        destinations = [
+            str(PurePosixPath(path).parent / normalize_filename(file_obj.name))
+            for file_obj, path in zip(validated_files, normalized_paths)
+        ]
+        if all("/" not in path for path in destinations):
+            destinations = [f"{style or 'uploaded'}/{path}" for path in destinations]
+        validate_upload_destinations(destinations)
 
         upload_base = Path("/tmp") / "batch_uploads"
         upload_base.mkdir(parents=True, exist_ok=True)
-        temp_dir = str(upload_base / str(uuid.uuid4()))
+        root = upload_base.resolve() / str(uuid.uuid4())
+        temp_dir = str(root)
+        root_created = False
 
         try:
-            # ── Save files with normalized names, preserving folder structure ──
-            # for file_obj, relative_path in zip(validated_files, normalized_paths):
-            #     # Strip leading slashes/dots — already clean from serializer
-            #     safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-            #     full_path = os.path.join(temp_dir, safe_path)
-
-            #     os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-            #     with open(full_path, "wb+") as dest:
-            #         for chunk in file_obj.chunks():
-            #             dest.write(chunk)
-            for file_obj, relative_path in zip(files, normalized_paths):
-
-                # normalize filename BEFORE saving
-                file_obj.name = normalize_filename(file_obj.name)
-
-                safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-
-                # replace original filename inside path if needed
-                safe_path = os.path.join(
-                    os.path.dirname(safe_path),
-                    file_obj.name
-                )
-
-                full_path = os.path.join(temp_dir, safe_path)
-                os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-                with open(full_path, "wb+") as dest:
+            # Never reuse a pre-existing directory or follow a planted root link.
+            root.mkdir(mode=0o700)
+            root_created = True
+            for file_obj, relative_path in zip(validated_files, destinations):
+                full_path = contained_upload_path(root, relative_path)
+                full_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                full_path = contained_upload_path(root, relative_path)
+                # Exclusive creation refuses existing files and final symlinks.
+                with open(full_path, "xb") as dest:
                     for chunk in file_obj.chunks():
                         dest.write(chunk)
 
@@ -101,19 +98,6 @@ class FolderUploadView(APIView):
                 f for f in os.listdir(temp_dir)
                 if os.path.isdir(os.path.join(temp_dir, f))
             ]
-
-            if not folders:
-                # Flat upload — move all files into one named folder
-                default_folder_name = style or "uploaded"
-                default_folder_path = os.path.join(temp_dir, default_folder_name)
-                os.makedirs(default_folder_path, exist_ok=True)
-
-                for item in os.listdir(temp_dir):
-                    item_path = os.path.join(temp_dir, item)
-                    if os.path.isfile(item_path):
-                        os.rename(item_path, os.path.join(default_folder_path, item))
-
-                folders = [default_folder_name]
 
             # ── Create FolderBatch ────────────────────────────────────────
             batch = FolderBatch.objects.create(
@@ -154,9 +138,15 @@ class FolderUploadView(APIView):
             logger.exception("Folder upload error: %s", exc)
             try:
                 import shutil
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                if root_created:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
+            if isinstance(exc, (ValidationError, FileExistsError)):
+                return Response(
+                    {"detail": "Invalid or conflicting upload destination."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {"error": f"Upload failed: {exc}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
