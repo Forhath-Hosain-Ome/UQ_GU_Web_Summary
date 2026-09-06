@@ -2,6 +2,8 @@
 import logging
 import os
 import uuid
+import errno
+import shutil
 from pathlib import Path, PurePosixPath
 
 from rest_framework import status
@@ -17,7 +19,7 @@ from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
 from utils import normalize_filename
 from image_processor.upload_paths import (
-    contained_upload_path,
+    open_upload_file,
     validate_upload_destinations,
 )
 
@@ -72,24 +74,23 @@ class FolderUploadView(APIView):
         ]
         if all("/" not in path for path in destinations):
             destinations = [f"{style or 'uploaded'}/{path}" for path in destinations]
-        validate_upload_destinations(destinations)
+        try:
+            validate_upload_destinations(destinations)
+        except ValidationError:
+            return Response({"code": "upload_destination_conflict", "detail": "Upload names conflict."}, status=400)
 
         upload_base = Path("/tmp") / "batch_uploads"
-        upload_base.mkdir(parents=True, exist_ok=True)
-        root = upload_base.resolve() / str(uuid.uuid4())
-        temp_dir = str(root)
         root_created = False
 
         try:
+            upload_base.mkdir(parents=True, exist_ok=True)
+            root = upload_base.resolve() / str(uuid.uuid4())
+            temp_dir = str(root)
             # Never reuse a pre-existing directory or follow a planted root link.
             root.mkdir(mode=0o700)
             root_created = True
             for file_obj, relative_path in zip(validated_files, destinations):
-                full_path = contained_upload_path(root, relative_path)
-                full_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                full_path = contained_upload_path(root, relative_path)
-                # Exclusive creation refuses existing files and final symlinks.
-                with open(full_path, "xb") as dest:
+                with open_upload_file(root, relative_path) as dest:
                     for chunk in file_obj.chunks():
                         dest.write(chunk)
 
@@ -135,19 +136,26 @@ class FolderUploadView(APIView):
             )
 
         except Exception as exc:
-            logger.exception("Folder upload error: %s", exc)
             try:
-                import shutil
                 if root_created:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception:
-                pass
-            if isinstance(exc, (ValidationError, FileExistsError)):
+                    shutil.rmtree(temp_dir)
+            except OSError:
+                logger.warning("Image upload cleanup failed")
+            invalid = isinstance(exc, (ValidationError, FileExistsError)) or (
+                isinstance(exc, OSError)
+                and exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EINVAL, errno.ENAMETOOLONG)
+            )
+            code = "invalid_upload_destination" if invalid else "upload_failed"
+            if isinstance(exc, FileExistsError):
+                code = "upload_destination_conflict"
+            # Exception text/tracebacks can disclose paths: record only safe categories.
+            logger.warning("Image upload failed code=%s error_type=%s", code, type(exc).__name__)
+            if invalid:
                 return Response(
-                    {"detail": "Invalid or conflicting upload destination."},
+                    {"code": code, "detail": "Invalid or conflicting upload destination."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             return Response(
-                {"error": f"Upload failed: {exc}"},
+                {"code": code, "error": "Upload failed. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

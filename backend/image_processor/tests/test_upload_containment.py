@@ -1,5 +1,10 @@
 import tempfile
 import os
+import stat
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest import skipUnless
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,9 +15,10 @@ from rest_framework.test import APIClient
 from rest_framework.exceptions import ValidationError
 
 from image_processor.models import FolderBatch
-from image_processor.upload_paths import contained_upload_path
+from image_processor.upload_paths import contained_upload_path, open_upload_file
 
 VIEW = "image_processor.views.folder_upload_view"
+PATHS = "image_processor.upload_paths"
 
 
 class UploadContainmentTests(TestCase):
@@ -156,7 +162,9 @@ class UploadContainmentTests(TestCase):
     def test_colliding_normalized_filenames_are_rejected_before_writing(self):
         for names in (["a b.jpg", "a_b.jpg"], ["A.jpg", "a.jpg"], ["a.jpg", "a.jpg"]):
             with self.subTest(names=names):
-                self.assert_rejected(self.upload(names=names))
+                response = self.upload(names=names)
+                self.assert_rejected(response)
+                self.assertEqual(response.data["code"], "upload_destination_conflict")
 
     def test_file_directory_conflict_is_rejected_in_either_order(self):
         for names, paths in (
@@ -190,14 +198,18 @@ class UploadContainmentTests(TestCase):
 
     def test_existing_file_at_final_destination_is_not_overwritten(self):
         captured = []
-        real_open = open
-        def existing_file(path, mode):
-            Path(path).write_bytes(b"existing")
+        real_open = os.open
+        def existing_file(path, flags, mode=0o777, **kwargs):
+            if not flags & os.O_CREAT:
+                return real_open(path, flags, mode, **kwargs)
+            with os.fdopen(real_open(path, flags, mode, **kwargs), "wb") as stream:
+                stream.write(b"existing")
             try:
-                return real_open(path, mode)
+                return real_open(path, flags, mode, **kwargs)
             finally:
-                captured.append(Path(path).read_bytes())
-        with patch(VIEW + ".open", side_effect=existing_file):
+                with os.fdopen(real_open(path, os.O_RDONLY, **kwargs), "rb") as stream:
+                    captured.append(stream.read())
+        with patch(PATHS + ".os.open", side_effect=existing_file):
             response = self.upload()
         self.assert_rejected(response)
         self.assertEqual(captured, [b"existing"])
@@ -243,6 +255,7 @@ class UploadContainmentTests(TestCase):
         with patch(VIEW + ".uuid.uuid4", return_value="existing-job"):
             response = self.upload()
         self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data["code"], "upload_destination_conflict")
         self.assertEqual(sentinel.read_text(), "existing job")
         self.assertFalse(FolderBatch.objects.exists())
         self.delay.assert_not_called()
@@ -275,7 +288,7 @@ class UploadContainmentTests(TestCase):
             if not link.exists():
                 self.make_directory_link(link, outside)
             return real_containment(root, relative_path)
-        with patch(VIEW + ".contained_upload_path", side_effect=plant_link):
+        with patch(PATHS + ".contained_upload_path", side_effect=plant_link):
             response = self.upload(paths=["Style-A/photo.jpg"])
         self.assert_rejected(response)
         self.assertEqual(sentinel.read_text(), "untouched")
@@ -283,10 +296,96 @@ class UploadContainmentTests(TestCase):
     def test_write_failure_cleans_only_its_job_and_does_not_dispatch(self):
         sentinel = self.sandbox / "sentinel.txt"
         sentinel.write_text("untouched")
-        with patch(VIEW + ".open", side_effect=OSError("synthetic write failure")):
-            response = self.upload()
+        secret_path = str(self.sandbox / "private-job-uuid")
+        with patch(VIEW + ".open_upload_file", side_effect=OSError(secret_path)):
+            with self.assertLogs(VIEW, level="WARNING") as logs:
+                response = self.upload()
         self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data["code"], "upload_failed")
+        self.assertNotIn(secret_path, str(response.data) + str(logs.output))
         self.assertEqual(list(self.staging.iterdir()), [])
         self.assertEqual(sentinel.read_text(), "untouched")
         self.assertFalse(FolderBatch.objects.exists())
         self.delay.assert_not_called()
+
+    def test_concurrent_writers_have_one_winner_without_overwrite(self):
+        root = self.sandbox / "job"
+        root.mkdir(mode=0o700)
+        barrier = Barrier(4)
+        def write(index):
+            barrier.wait(timeout=10)
+            try:
+                with open_upload_file(root, "nested/photo.jpg") as stream:
+                    stream.write(str(index).encode())
+                return index
+            except FileExistsError:
+                return None
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            winners = [i for i in pool.map(write, range(4)) if i is not None]
+        self.assertEqual(len(winners), 1)
+        self.assertEqual((root / "nested/photo.jpg").read_bytes(), str(winners[0]).encode())
+
+    def test_parent_replaced_with_link_during_mkdir_is_rejected(self):
+        root, outside = self.sandbox / "job", self.sandbox / "outside"
+        root.mkdir(mode=0o700)
+        outside.mkdir()
+        real_mkdir = os.mkdir
+        def replace_parent(*args, **kwargs):
+            real_mkdir(*args, **kwargs)
+            (root / "nested").rmdir()
+            self.make_directory_link(root / "nested", outside)
+        with patch(PATHS + ".os.mkdir", side_effect=replace_parent):
+            with self.assertRaises((ValidationError, OSError)):
+                with open_upload_file(root, "nested/photo.jpg"):
+                    self.fail("A replaced parent must never be opened for writing")
+        self.assertEqual(list(outside.iterdir()), [])
+
+    @skipUnless(os.name == "nt", "Windows ACL contract; POSIX modes are tested separately")
+    def test_windows_job_and_file_acl_allow_only_owner_system_and_administrators(self):
+        root = self.sandbox / "private-job"
+        root.mkdir(mode=0o700)
+        with open_upload_file(root, "photo.jpg") as stream:
+            stream.write(b"private")
+        script = """
+        $ErrorActionPreference = 'Stop'
+        $allowed = @([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value,
+                     'S-1-5-18', 'S-1-5-32-544', 'S-1-3-4') # SYSTEM, Administrators, OWNER RIGHTS
+        foreach ($item in @($env:UQ_TEST_JOB, (Join-Path $env:UQ_TEST_JOB 'photo.jpg'))) {
+            $acl = if ([IO.Directory]::Exists($item)) { [IO.Directory]::GetAccessControl($item) } else { [IO.File]::GetAccessControl($item) }
+            foreach ($ace in $acl.Access) {
+                $sid = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                if ($ace.AccessControlType -eq 'Allow' -and $sid -notin $allowed) {
+                    throw 'Unexpected principal has access to the upload job'
+                }
+            }
+        }
+        """
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            env={**os.environ, "UQ_TEST_JOB": str(root)}, capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @skipUnless(os.name == "posix", "POSIX dir_fd/umask contract; Windows uses private job ACLs")
+    def test_parent_swap_before_file_open_stays_anchored_and_private(self):
+        root = self.sandbox / "job"
+        outside = self.sandbox / "outside"
+        root.mkdir(mode=0o700)
+        outside.mkdir()
+        real_open = os.open
+        def swap_parent(path, flags, mode=0o777, **kwargs):
+            if flags & os.O_CREAT:
+                (root / "nested").rename(root / "original")
+                (root / "nested").symlink_to(outside, target_is_directory=True)
+            return real_open(path, flags, mode, **kwargs)
+        previous_umask = os.umask(0)
+        try:
+            with patch(PATHS + ".os.open", side_effect=swap_parent):
+                with open_upload_file(root, "nested/photo.jpg") as stream:
+                    stream.write(b"contained")
+        finally:
+            os.umask(previous_umask)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual((root / "original/photo.jpg").read_bytes(), b"contained")
+        self.assertEqual(stat.S_IMODE((root / "original").stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE((root / "original/photo.jpg").stat().st_mode), 0o600)

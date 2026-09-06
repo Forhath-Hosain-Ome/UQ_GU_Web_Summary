@@ -1,5 +1,8 @@
 """Path rules for the Image Processor's private upload staging directory."""
 from pathlib import Path, PureWindowsPath
+from contextlib import ExitStack, contextmanager
+import os
+import stat
 
 from rest_framework.exceptions import ValidationError
 
@@ -41,7 +44,14 @@ def contained_upload_path(root: Path, relative_path: str) -> Path:
     for part in (None, *relative_path.split("/")):
         if part is not None:
             candidate = candidate / part
-        if candidate.is_symlink() or candidate.is_junction():
+        try:
+            metadata = candidate.lstat()  # Never follow a link to inspect its type.
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode) or (
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
             raise ValidationError("Upload paths must not contain links.")
     try:
         resolved = candidate.resolve()
@@ -49,6 +59,40 @@ def contained_upload_path(root: Path, relative_path: str) -> Path:
     except (ValueError, OSError, RuntimeError) as exc:
         raise ValidationError("Invalid upload destination.") from exc
     return resolved
+
+
+@contextmanager
+def open_upload_file(root: Path, relative_path: str):
+    """Exclusive, mode-0600 writes; POSIX traversal stays anchored to open dirs.
+
+    Windows has no stdlib openat: private job ACLs and a reparse check after
+    each mkdir protect its path-based fallback. Never change process umask.
+    """
+    destination = contained_upload_path(root, relative_path)
+    parts = relative_path.replace("\\", "/").split("/")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    with ExitStack() as opened:
+        if os.name == "posix":
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            parent_fd = os.open(root, directory_flags)
+            opened.callback(os.close, parent_fd)
+            for part in parts[:-1]:
+                try:
+                    os.mkdir(part, 0o700, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass  # The atomic no-follow directory open below verifies it.
+                parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+                opened.callback(os.close, parent_fd)
+            fd = os.open(parts[-1], flags | os.O_NOFOLLOW, 0o600, dir_fd=parent_fd)
+        else:
+            for i in range(1, len(parts)):
+                parent = contained_upload_path(root, "/".join(parts[:i]))
+                parent.mkdir(mode=0o700, exist_ok=True)
+                contained_upload_path(root, "/".join(parts[:i]))
+            destination = contained_upload_path(root, relative_path)
+            fd = os.open(destination, flags, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            yield stream
 
 
 def validate_upload_destinations(paths: list[str]) -> None:
