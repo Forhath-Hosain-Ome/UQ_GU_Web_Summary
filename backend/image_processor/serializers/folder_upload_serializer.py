@@ -2,6 +2,7 @@
 from rest_framework import serializers
 import os
 from collections import defaultdict
+from image_processor.upload_paths import validate_upload_path
 
 MAX_FILE_SIZE = 50 * 1024 * 1024
 VALID_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp'}
@@ -23,6 +24,9 @@ class FolderUploadSerializer(serializers.Serializer):
     style = serializers.CharField(max_length=255, allow_blank=True, required=False, default="")
     is_renamed_file = serializers.BooleanField(required=False, default=False)
 
+    def validate_style(self, value):
+        return validate_upload_path(value, single_component=True) if value else value
+
     def validate(self, data):
         files = data.get('files', [])
         paths = data.get('paths', []) or []
@@ -37,17 +41,15 @@ class FolderUploadSerializer(serializers.Serializer):
         if len(files) != len(paths):
             raise serializers.ValidationError("The number of files and paths must match.")
 
+        paths = [validate_upload_path(path) for path in paths]
+        data['paths'] = paths
         for f, path in zip(files, paths):
+            validate_upload_path(f.name, single_component=True)
             ext = os.path.splitext(path)[1].lower()
-            if ext not in VALID_IMAGE_EXTENSIONS:
+            if ext not in VALID_IMAGE_EXTENSIONS or os.path.splitext(f.name)[1].lower() not in VALID_IMAGE_EXTENSIONS:
                 errors.append(f"{path}: Only image files (JPG, JPEG, PNG, BMP, GIF, TIFF, WEBP) are accepted.")
             if f.size > MAX_FILE_SIZE:
                 errors.append(f"{path}: Exceeds the 50 MB limit.")
-            # ── Path traversal check (segment-aware, not substring) ──────────
-            normalized = os.path.normpath(path).replace("\\", "/")
-            segments = normalized.split("/")
-            if ".." in segments or path.startswith("/") or normalized.startswith("/"):
-                errors.append(f"{path}: Invalid directory path.")
 
         if errors:
             raise serializers.ValidationError(errors)

@@ -2,10 +2,12 @@
 import logging
 import os
 import uuid
-from pathlib import Path
+import errno
+import shutil
+from pathlib import Path, PurePosixPath
 
-from django.conf import settings
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +18,10 @@ from image_processor.serializers import FolderUploadSerializer
 from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
 from utils import normalize_filename
+from image_processor.upload_paths import (
+    open_upload_file,
+    validate_upload_destinations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,43 +62,35 @@ class FolderUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use NORMALIZED paths from validated_data (01.jpg, 02.jpg …)
         validated_files = serializer.validated_data["files"]
         normalized_paths = serializer.validated_data["paths"]
+        style = serializer.validated_data["style"]
+
+        # Preserve the existing saved filenames and logical folder identities.
+        # Plan flat uploads in their final folder, eliminating unsafe renames.
+        destinations = [
+            str(PurePosixPath(path).parent / normalize_filename(file_obj.name))
+            for file_obj, path in zip(validated_files, normalized_paths)
+        ]
+        if all("/" not in path for path in destinations):
+            destinations = [f"{style or 'uploaded'}/{path}" for path in destinations]
+        try:
+            validate_upload_destinations(destinations)
+        except ValidationError:
+            return Response({"code": "upload_destination_conflict", "detail": "Upload names conflict."}, status=400)
 
         upload_base = Path("/tmp") / "batch_uploads"
-        upload_base.mkdir(parents=True, exist_ok=True)
-        temp_dir = str(upload_base / str(uuid.uuid4()))
+        root_created = False
 
         try:
-            # ── Save files with normalized names, preserving folder structure ──
-            # for file_obj, relative_path in zip(validated_files, normalized_paths):
-            #     # Strip leading slashes/dots — already clean from serializer
-            #     safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-            #     full_path = os.path.join(temp_dir, safe_path)
-
-            #     os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-            #     with open(full_path, "wb+") as dest:
-            #         for chunk in file_obj.chunks():
-            #             dest.write(chunk)
-            for file_obj, relative_path in zip(files, normalized_paths):
-
-                # normalize filename BEFORE saving
-                file_obj.name = normalize_filename(file_obj.name)
-
-                safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-
-                # replace original filename inside path if needed
-                safe_path = os.path.join(
-                    os.path.dirname(safe_path),
-                    file_obj.name
-                )
-
-                full_path = os.path.join(temp_dir, safe_path)
-                os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-                with open(full_path, "wb+") as dest:
+            upload_base.mkdir(parents=True, exist_ok=True)
+            root = upload_base.resolve() / str(uuid.uuid4())
+            temp_dir = str(root)
+            # Never reuse a pre-existing directory or follow a planted root link.
+            root.mkdir(mode=0o700)
+            root_created = True
+            for file_obj, relative_path in zip(validated_files, destinations):
+                with open_upload_file(root, relative_path) as dest:
                     for chunk in file_obj.chunks():
                         dest.write(chunk)
 
@@ -101,19 +99,6 @@ class FolderUploadView(APIView):
                 f for f in os.listdir(temp_dir)
                 if os.path.isdir(os.path.join(temp_dir, f))
             ]
-
-            if not folders:
-                # Flat upload — move all files into one named folder
-                default_folder_name = style or "uploaded"
-                default_folder_path = os.path.join(temp_dir, default_folder_name)
-                os.makedirs(default_folder_path, exist_ok=True)
-
-                for item in os.listdir(temp_dir):
-                    item_path = os.path.join(temp_dir, item)
-                    if os.path.isfile(item_path):
-                        os.rename(item_path, os.path.join(default_folder_path, item))
-
-                folders = [default_folder_name]
 
             # ── Create FolderBatch ────────────────────────────────────────
             batch = FolderBatch.objects.create(
@@ -151,13 +136,26 @@ class FolderUploadView(APIView):
             )
 
         except Exception as exc:
-            logger.exception("Folder upload error: %s", exc)
             try:
-                import shutil
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception:
-                pass
+                if root_created:
+                    shutil.rmtree(temp_dir)
+            except OSError:
+                logger.warning("Image upload cleanup failed")
+            invalid = isinstance(exc, (ValidationError, FileExistsError)) or (
+                isinstance(exc, OSError)
+                and exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EINVAL, errno.ENAMETOOLONG)
+            )
+            code = "invalid_upload_destination" if invalid else "upload_failed"
+            if isinstance(exc, FileExistsError):
+                code = "upload_destination_conflict"
+            # Exception text/tracebacks can disclose paths: record only safe categories.
+            logger.warning("Image upload failed code=%s error_type=%s", code, type(exc).__name__)
+            if invalid:
+                return Response(
+                    {"code": code, "detail": "Invalid or conflicting upload destination."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
-                {"error": f"Upload failed: {exc}"},
+                {"code": code, "error": "Upload failed. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
