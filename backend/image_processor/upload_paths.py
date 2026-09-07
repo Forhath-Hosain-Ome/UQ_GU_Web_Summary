@@ -1,5 +1,5 @@
 """Path rules for the Image Processor's private upload staging directory."""
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from contextlib import ExitStack, contextmanager
 import os
 import stat
@@ -128,3 +128,14 @@ def validate_upload_destinations(paths: list[str]) -> None:
             previous = directory_names.setdefault(name.casefold(), name)
             if previous != name:
                 raise ValidationError("Upload folder names collide across platforms.")
+
+
+def validate_preparation_destinations(paths: list[str]) -> None:
+    """Final normalized intake paths must not alias the worker's per-folder JPEGs."""
+    targets = set()
+    for path in paths:
+        parts = PurePosixPath(path).parts
+        target = (parts[0].casefold() if len(parts) > 1 else "", PurePosixPath(path).stem.casefold())
+        if target in targets:
+            raise ValidationError("Upload names conflict during image preparation.")
+        targets.add(target)

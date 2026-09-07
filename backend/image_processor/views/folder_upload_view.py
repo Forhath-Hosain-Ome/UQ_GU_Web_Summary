@@ -22,6 +22,7 @@ from utils import normalize_filename
 from image_processor.upload_paths import (
     open_upload_file,
     validate_upload_destinations,
+    validate_preparation_destinations,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ class FolderUploadView(APIView):
             destinations = [f"{style or 'uploaded'}/{path}" for path in destinations]
         try:
             validate_upload_destinations(destinations)
+            validate_preparation_destinations(destinations)
         except ValidationError:
             return Response({"code": "upload_destination_conflict", "detail": "Upload names conflict."}, status=400)
 

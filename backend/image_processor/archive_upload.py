@@ -7,7 +7,10 @@ from pathlib import PurePosixPath
 
 from rest_framework.exceptions import ValidationError
 from image_processor.serializers.folder_upload_serializer import MAX_FILE_SIZE, VALID_IMAGE_EXTENSIONS
-from image_processor.upload_paths import open_upload_file, validate_upload_path, validate_upload_destinations
+from image_processor.upload_paths import (
+    open_upload_file, validate_upload_path, validate_upload_destinations,
+    validate_preparation_destinations,
+)
 from utils import normalize_filename
 
 MAX_ARCHIVE_SIZE = 50 * 1024 * 1024
@@ -16,6 +19,8 @@ MAX_TOTAL_SIZE = 200 * 1024 * 1024
 MAX_RATIO = 100
 MAX_DIRECTORY_SIZE = 2 * 1024 * 1024
 MAX_PATH_LENGTH = 1024
+MAX_PATH_DEPTH = 8  # Logical folder plus up to seven nested inspection groupings.
+MAX_DERIVED_DIRECTORIES = 1000  # Do not amplify the 1,000-entry budget into more directories.
 CHUNK_SIZE = 64 * 1024
 
 
@@ -51,6 +56,19 @@ def _check_directory_budget(upload):
     upload.seek(0)
 
 
+def _track_directories(path, is_directory, identities):
+    parts = path.split('/')
+    depth = len(parts) if is_directory else len(parts) - 1
+    if depth > MAX_PATH_DEPTH:
+        raise ArchiveValidationError('archive_limit_exceeded')
+    for level in range(1, depth + 1):
+        identity = '/'.join(parts[:level]).casefold()
+        if identity not in identities:
+            if len(identities) >= MAX_DERIVED_DIRECTORIES:
+                raise ArchiveValidationError('archive_limit_exceeded')
+            identities.add(identity)
+
+
 def _plan(archive, style):
     entries = archive.infolist()
     if not entries:
@@ -58,6 +76,7 @@ def _plan(archive, style):
     if len(entries) > MAX_ENTRIES:
         raise ArchiveValidationError('archive_limit_exceeded')
     files, directories = [], []
+    derived_directories = set()
     total = 0
     for entry in entries:
         raw = entry.orig_filename
@@ -67,6 +86,7 @@ def _plan(archive, style):
         mode = (entry.external_attr >> 16) & 0xFFFF
         kind = stat.S_IFMT(mode)
         is_dir = entry.is_dir()
+        _track_directories(path, is_dir, derived_directories)
         # Reject Unix links/devices and DOS volume/reparse attributes, even on POSIX.
         if (kind not in (0, stat.S_IFREG, stat.S_IFDIR)
                 or (kind == stat.S_IFDIR and not is_dir)
@@ -99,7 +119,10 @@ def _plan(archive, style):
         raise ArchiveValidationError()
     if all(flat):
         files = [(entry, f"{style or 'uploaded'}/{path}") for entry, path in files]
+        for _, path in files:
+            _track_directories(path, False, derived_directories)
     validate_upload_destinations([p for _, p in files])
+    validate_preparation_destinations([p for _, p in files])
     return files
 
 
