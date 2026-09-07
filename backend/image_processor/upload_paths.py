@@ -55,7 +55,20 @@ def contained_upload_path(root: Path, relative_path: str) -> Path:
             raise ValidationError("Upload paths must not contain links.")
     try:
         resolved = candidate.resolve()
-        resolved.relative_to(root.resolve())
+        resolved_root = root.resolve()
+        if os.name == "nt":
+            # Windows can return either spelling during concurrent creation.
+            # Normalize only server-resolved drive/UNC namespace prefixes.
+            def without_namespace(path):
+                text = str(path)
+                if text.startswith("\\\\?\\UNC\\"):
+                    return Path("\\\\" + text[8:])
+                if text.startswith("\\\\?\\") and len(PureWindowsPath(text[4:]).drive) == 2:
+                    return Path(text[4:])
+                return path
+            resolved = without_namespace(resolved)
+            resolved_root = without_namespace(resolved_root)
+        resolved.relative_to(resolved_root)
     except (ValueError, OSError, RuntimeError) as exc:
         raise ValidationError("Invalid upload destination.") from exc
     return resolved
