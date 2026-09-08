@@ -16,6 +16,7 @@ from django.db import transaction
 
 from image_processor.serializers import FolderUploadSerializer
 from image_processor.archive_upload import ArchiveValidationError, stage_archive
+from image_processor.output_paths import OutputPathError, validate_report_date
 from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
 from utils import normalize_filename
@@ -46,7 +47,10 @@ class FolderUploadView(APIView):
     def post(self, request):
         files           = request.FILES.getlist("files")
         paths           = request.POST.getlist("paths") or request.POST.getlist("paths[]")
-        date            = request.POST.get("date", "").strip()
+        try:
+            date = validate_report_date(request.POST.get("date", ""))
+        except OutputPathError:
+            return Response({"code": "invalid_date", "detail": "Use a valid YYYY-MM-DD date or leave it blank."}, status=400)
         style           = request.POST.get("style", "").strip()
         is_renamed_file = request.POST.get("is_renamed_file") == "true"
         archives = request.FILES.getlist("archive")
