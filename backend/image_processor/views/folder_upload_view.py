@@ -15,12 +15,14 @@ from rest_framework.views import APIView
 from django.db import transaction
 
 from image_processor.serializers import FolderUploadSerializer
+from image_processor.archive_upload import ArchiveValidationError, stage_archive
 from image_processor.models import FolderBatch
 from image_processor.tasks import process_folder_task
 from utils import normalize_filename
 from image_processor.upload_paths import (
     open_upload_file,
     validate_upload_destinations,
+    validate_preparation_destinations,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,12 @@ class FolderUploadView(APIView):
         date            = request.POST.get("date", "").strip()
         style           = request.POST.get("style", "").strip()
         is_renamed_file = request.POST.get("is_renamed_file") == "true"
+        archives = request.FILES.getlist("archive")
+        if "archive" in request.data and (
+            len(archives) != 1 or len(request.data.getlist("archive")) != 1
+            or "files" in request.data or "paths" in request.data or "paths[]" in request.data
+        ):
+            return Response({"code": "invalid_upload_mode", "detail": "Submit one archive or files with paths."}, status=400)
 
         paths = [p.replace("\\", "/") for p in paths]
 
@@ -59,12 +67,18 @@ class FolderUploadView(APIView):
                 "is_renamed_file": is_renamed_file,
             }
         )
-        if not serializer.is_valid():
+        if archives:
+            try:
+                style = serializer.fields["style"].run_validation(style)
+                style = serializer.validate_style(style)
+            except ValidationError:
+                return Response({"code": "invalid_archive", "detail": "Invalid archive style."}, status=400)
+        elif not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        validated_files = serializer.validated_data["files"]
-        normalized_paths = serializer.validated_data["paths"]
-        style = serializer.validated_data["style"]
+        validated_files = [] if archives else serializer.validated_data["files"]
+        normalized_paths = [] if archives else serializer.validated_data["paths"]
+        style = style if archives else serializer.validated_data["style"]
 
         # Preserve the existing saved filenames and logical folder identities.
         # Plan flat uploads in their final folder, eliminating unsafe renames.
@@ -76,6 +90,7 @@ class FolderUploadView(APIView):
             destinations = [f"{style or 'uploaded'}/{path}" for path in destinations]
         try:
             validate_upload_destinations(destinations)
+            validate_preparation_destinations(destinations)
         except ValidationError:
             return Response({"code": "upload_destination_conflict", "detail": "Upload names conflict."}, status=400)
 
@@ -89,6 +104,8 @@ class FolderUploadView(APIView):
             # Never reuse a pre-existing directory or follow a planted root link.
             root.mkdir(mode=0o700)
             root_created = True
+            if archives:
+                stage_archive(archives[0], root, style)
             for file_obj, relative_path in zip(validated_files, destinations):
                 with open_upload_file(root, relative_path) as dest:
                     for chunk in file_obj.chunks():
@@ -128,7 +145,7 @@ class FolderUploadView(APIView):
                     "batch_id":      batch.id,
                     "total_folders": len(folders),
                     "message": (
-                        f"Uploaded {len(files)} file(s) into "
+                        f"Uploaded {len(archives) or len(files)} file(s) into "
                         f"{len(folders)} folder(s). Processing started."
                     ),
                 },
@@ -141,6 +158,8 @@ class FolderUploadView(APIView):
                     shutil.rmtree(temp_dir)
             except OSError:
                 logger.warning("Image upload cleanup failed")
+            if isinstance(exc, ArchiveValidationError):
+                return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
             invalid = isinstance(exc, (ValidationError, FileExistsError)) or (
                 isinstance(exc, OSError)
                 and exc.errno in (errno.ELOOP, errno.ENOTDIR, errno.EINVAL, errno.ENAMETOOLONG)

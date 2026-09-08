@@ -1,5 +1,5 @@
 """Path rules for the Image Processor's private upload staging directory."""
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from contextlib import ExitStack, contextmanager
 import os
 import stat
@@ -55,7 +55,20 @@ def contained_upload_path(root: Path, relative_path: str) -> Path:
             raise ValidationError("Upload paths must not contain links.")
     try:
         resolved = candidate.resolve()
-        resolved.relative_to(root.resolve())
+        resolved_root = root.resolve()
+        if os.name == "nt":
+            # Windows can return either spelling during concurrent creation.
+            # Normalize only server-resolved drive/UNC namespace prefixes.
+            def without_namespace(path):
+                text = str(path)
+                if text.startswith("\\\\?\\UNC\\"):
+                    return Path("\\\\" + text[8:])
+                if text.startswith("\\\\?\\") and len(PureWindowsPath(text[4:]).drive) == 2:
+                    return Path(text[4:])
+                return path
+            resolved = without_namespace(resolved)
+            resolved_root = without_namespace(resolved_root)
+        resolved.relative_to(resolved_root)
     except (ValueError, OSError, RuntimeError) as exc:
         raise ValidationError("Invalid upload destination.") from exc
     return resolved
@@ -115,3 +128,14 @@ def validate_upload_destinations(paths: list[str]) -> None:
             previous = directory_names.setdefault(name.casefold(), name)
             if previous != name:
                 raise ValidationError("Upload folder names collide across platforms.")
+
+
+def validate_preparation_destinations(paths: list[str]) -> None:
+    """Final normalized intake paths must not alias the worker's per-folder JPEGs."""
+    targets = set()
+    for path in paths:
+        parts = PurePosixPath(path).parts
+        target = (parts[0].casefold() if len(parts) > 1 else "", PurePosixPath(path).stem.casefold())
+        if target in targets:
+            raise ValidationError("Upload names conflict during image preparation.")
+        targets.add(target)
