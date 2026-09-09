@@ -25,6 +25,10 @@ from docx.shared import Inches, Pt, RGBColor
 from PIL import Image
 
 from image_processor.models import FolderBatch, FolderReport, FolderFailedPDF
+from image_processor.output_paths import (
+    OutputPathError, open_output_file, output_directory, output_path,
+    report_filename, validate_report_date,
+)
 from services.file_manager.copy_and_rename import copy_and_rename
 
 logger = logging.getLogger(__name__)
@@ -114,14 +118,15 @@ def _is_valid_image(filename: str) -> bool:
     return Path(filename).suffix.lower() in VALID_EXTENSIONS
 
 
-def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
+def _prepare_image(image_path: str, dest_dir: Path, *, output_root: Path) -> Optional[Path]:
     """
     Convert and resize an image to JPEG at 325x265 px.
-    Returns the dest Path, or None on failure.
+    dest_dir is relative to output_root. Return the dest Path or None on failure.
     """
     source = Path(image_path)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / (source.stem + ".jpg")
+    relative = str(dest_dir / (source.stem + ".jpg"))
+    dest = output_path(output_root, relative)
+    created = False
 
     try:
         img = Image.open(source)
@@ -141,13 +146,17 @@ def _prepare_image(image_path: str, dest_dir: Path) -> Optional[Path]:
         import io as _io
         buf = _io.BytesIO()
         img.save(buf, "JPEG", quality=95)
-        dest.write_bytes(buf.getvalue())
+        with open_output_file(output_root, relative) as stream:
+            created = True
+            stream.write(buf.getvalue())
         source.unlink(missing_ok=True)
         return dest
 
+    except OutputPathError:
+        raise
     except Exception as exc:
         logger.error("Image prepare failed for %s: %s", image_path, exc)
-        if dest.exists():
+        if created and dest.exists():
             dest.unlink(missing_ok=True)
         return None
 
@@ -297,6 +306,7 @@ def _generate_docx(
     image_paths: list[str],
     output_docx_path: str,
     *,
+    output_root: Path,
     mode: str = "basic",
     label_style: Optional[dict] = None,
     translations: Optional[dict[str, str]] = None,
@@ -361,16 +371,9 @@ def _generate_docx(
                 )
 
             _add_image_paragraph(doc, img_path)
-    output_docx_path = Path(output_docx_path)
-    output_docx_path.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(str(output_docx_path))
-    logger.info("WRITING DOCX TO: %s", output_docx_path.resolve())
-    logger.info("CWD: %s", os.getcwd())
-
-    os.makedirs(os.path.dirname(output_docx_path), exist_ok=True)
-    doc.save(output_docx_path)
-    os.chmod(output_docx_path, 0o644)
-    logger.info("DOCX saved: %s", output_docx_path)
+    with open_output_file(output_root, output_docx_path) as stream:
+        doc.save(stream)
+    logger.info("DOCX saved for report")
 
 
 # ── Translation helper ────────────────────────────────────────────────────────
@@ -435,7 +438,7 @@ def process_defect_docx_task(
     # FIX: output_base was undefined in original code — this caused NameError
     # crashing every task immediately after it reached PROCESSING state.
     image_settings = getattr(settings, "IMAGE_PROCESSOR_SETTINGS", {})
-    output_base = Path(image_settings.get("OUTPUT_DIR", settings.BASE_DIR / "media" / "output" / "defect_image"))
+    output_base = Path(image_settings.get("OUTPUT_DIR", settings.BASE_DIR / "media" / "output" / "defect_image")).absolute()
 
     # ── Resolve template ──────────────────────────────────────────────────
     if not template_path:
@@ -495,10 +498,6 @@ def process_defect_docx_task(
             folder_name = folder_path.name
             folder_extract_dir = folder_path
 
-            # FIX: output_base now defined above from settings
-            folder_output_dir = output_base / str(batch_id) / folder_name
-            folder_output_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-
             # FIX: Create FolderReport BEFORE inner try so it exists for error logging
             report = FolderReport.objects.create(
                 batch=batch,
@@ -507,6 +506,12 @@ def process_defect_docx_task(
             )
 
             try:
+                # Validate metadata before creating any output directories.
+                date = validate_report_date(date)
+                docx_filename = report_filename(folder_name, date, label_type)
+                folder_relative = f"{batch.pk}/{folder_name}"
+                output_directory(output_base, folder_relative)
+                docx_output_path = str(output_path(output_base, f"{folder_relative}/{docx_filename}"))
                 # ── Collect + sort images ─────────────────────────────────
                 raw_images = sorted([
                     str(p)
@@ -529,11 +534,11 @@ def process_defect_docx_task(
                     continue
 
                 # ── Prepare (convert + resize) images ─────────────────────
-                prepared_dir = folder_output_dir / "_prepared"
-                prepared_dir.mkdir(parents=True, exist_ok=True)
+                prepared_dir = Path(folder_relative) / "_prepared"
+                output_directory(output_base, str(prepared_dir))
                 prepared = []
                 for img_path in raw_images:
-                    out = _prepare_image(img_path, prepared_dir)
+                    out = _prepare_image(img_path, prepared_dir, output_root=output_base)
                     if out:
                         prepared.append(str(out))
                     else:
@@ -560,18 +565,14 @@ def process_defect_docx_task(
                     translations = _translate_names(stems, translation_language)
 
                 # ── Generate DOCX ─────────────────────────────────────────
-                safe_folder = folder_name.replace(" ", "_")
-                safe_date   = (date or "no-date").replace(" ", "_")
-                docx_filename = f"{label_type}_{safe_folder}_dated on {safe_date}.docx"
-                docx_output_path = str(folder_output_dir / docx_filename)
-
                 _generate_docx(
                     template_path    = template_path,
                     style_name       = folder_name,
                     date_str         = date,
                     label_type       = label_type,
                     image_paths      = prepared,
-                    output_docx_path = docx_output_path,
+                    output_docx_path = f"{folder_relative}/{docx_filename}",
+                    output_root      = output_base,
                     mode             = effective_mode,
                     label_style      = effective_label_style,
                     translations     = translations,
@@ -580,7 +581,7 @@ def process_defect_docx_task(
                 # ── Update report record ──────────────────────────────────
                 rel_path = os.path.relpath(
                     docx_output_path,
-                    str(settings.MEDIA_ROOT),
+                    str(Path(settings.MEDIA_ROOT).resolve()),
                 )
                 report.status          = FolderReport.Status.COMPLETED
                 report.image_count     = len(prepared)
